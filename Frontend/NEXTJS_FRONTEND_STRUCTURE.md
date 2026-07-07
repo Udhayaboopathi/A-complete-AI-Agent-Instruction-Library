@@ -39,20 +39,14 @@ Dates         : date-fns
 frontend/
 │
 ├── app/                                   # Routes only — thin shells, zero logic
-│   ├── (auth)/
-│   │   ├── login/
-│   │   │   └── page.tsx
-│   │   └── register/
-│   │       └── page.tsx
+│   ├── (pagename)/
+│   │   └── page.tsx  
 │   │
-│   ├── (dashboard)/
-│   │   ├── layout.tsx                     # Imports AppShell — nothing else
-│   │   ├── page.tsx                       # /dashboard home
-│   │   └── {pagename}/                    # One folder per page/feature
-│   │       ├── page.tsx                   # List/index view
-│   │       └── [id]/
-│   │           └── page.tsx               # Detail view
-│   │
+│   ├── (pagename)/
+│   │   ├── [ID]
+│   │   │   └── page.tsx 
+│   │   └── page.tsx 
+│   │ 
 │   ├── api/
 │   │   └── auth/[...nextauth]/route.ts
 │   ├── error.tsx
