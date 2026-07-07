@@ -312,7 +312,7 @@ Got a rule that improves consistency or security? PRs welcome!
 
 <br/>
 
-### ⭐ If this saves you time, drop a star — it helps more than you think!
+### ⭐ If this saves you time, drop a star - it helps more than you think!
 
 ![Star History](https://img.shields.io/github/stars/Udhayaboopathi?style=social)
 
