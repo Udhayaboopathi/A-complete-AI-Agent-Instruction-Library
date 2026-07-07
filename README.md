@@ -122,7 +122,7 @@ That's it. No drift. Same structure for every feature. 🔥
 ## 🗂️ Repository Structure
 
 ```txt
-AGENT_Prompt/
+A-complete-AI-Agent-Instruction-Library/
 │
 ├── 📁 Backend/
 │   ├── FASTAPI_ORM_STRUCTURE.md      # Python · FastAPI + SQLAlchemy async
