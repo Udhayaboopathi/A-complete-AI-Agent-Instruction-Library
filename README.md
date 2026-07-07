@@ -8,7 +8,7 @@
 <br/>
 
 <!-- SUBTITLE -->
-### 🧠 A strict instruction library that forces any AI agent to build production-grade code — your way, every time.
+### 🧠 A strict instruction library that forces any AI agent to build production-grade code - your way, every time.
 
 <br/>
 
@@ -55,7 +55,7 @@ You ask your AI agent to *"build a user feature"*…
 
 **11 battle-tested `.md` instruction files** that act as a strict rulebook for any AI coding agent (Cursor · GitHub Copilot · Claude · Windsurf).
 
-Drop the files into your project, reference them in your prompt, and the AI builds **consistent, secure, enterprise-grade code — every single time.**
+Drop the files into your project, reference them in your prompt, and the AI builds **consistent, secure, enterprise-grade code - every single time.**
 
 ```txt
 "Read database.md, backend.md, frontend.md, security.md
@@ -203,7 +203,7 @@ Build in order: database → backend → frontend.
 
 | Section | What It Gives You |
 |:-------:|:------------------|
-| 🏗️ **Folder Structure** | The exact, mandatory layout — no guessing |
+| 🏗️ **Folder Structure** | The exact, mandatory layout - no guessing |
 | 📐 **Layer Rules** | What each layer owns and what it must never do |
 | 💻 **Code Blueprints** | Copy-paste production-ready examples |
 | 🏷️ **Naming Conventions** | One consistent style across the whole codebase |
@@ -282,7 +282,7 @@ flowchart LR
 
 ## 📖 Full Usage Guide
 
-Everything — setup order, environment variables, daily workflow, production checklist, and prompt templates — is in **[`HOW_TO_USE.md`](./HOW_TO_USE.md)**.
+Everything — setup order, environment variables, daily workflow, production checklist, and prompt templates - is in **[`HOW_TO_USE.md`](./HOW_TO_USE.md)**.
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
@@ -304,7 +304,7 @@ Got a rule that improves consistency or security? PRs welcome!
 
 ## 👨‍💻 Author
 
-**Udhayaboopathi V** — Full Stack & DevOps Engineer
+**Udhayaboopathi V** - Full Stack & DevOps Engineer
 
 [![Portfolio](https://img.shields.io/badge/Portfolio-udhayaboopathi.tech-00F5FF?style=for-the-badge&logo=google-chrome&logoColor=white)](https://udhayaboopathi.tech)
 [![GitHub](https://img.shields.io/badge/GitHub-Udhayaboopathi-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Udhayaboopathi)
