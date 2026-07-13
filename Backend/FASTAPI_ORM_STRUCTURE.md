@@ -20,7 +20,7 @@ You have no creative freedom over architecture. You only have creative freedom o
 Generate EXACTLY this layout. No extra files. No deviations. No "utils.py" dumping grounds.
 
 ```
-{project_name}/
+{backend}/
 │
 ├── app/
 │   ├── __init__.py
@@ -154,6 +154,7 @@ app = create_application()
 ```
 
 **RULES:**
+
 - NEVER call `app.add_middleware()` directly in `main.py`
 - NEVER define routes in `main.py`
 - NEVER import from `crud/`, `services/`, or `models/` in `main.py`
@@ -222,6 +223,7 @@ settings = Settings()
 ```
 
 **RULES:**
+
 - NEVER use `os.environ.get()` or `os.getenv()` anywhere in the codebase — always `settings.*`
 - Secrets (`SECRET_KEY`, DB credentials) MUST have NO default value — crash on startup if missing
 - The `settings` singleton is imported everywhere; NEVER create a second `Settings()` instance
@@ -271,6 +273,7 @@ async def init_db() -> None:
 ```
 
 **RULES:**
+
 - `create_async_engine()` is called ONCE and ONLY in `db/session.py`
 - `AsyncSessionLocal()` is instantiated ONLY inside `dependencies.py` → `get_db()`
 - NEVER use synchronous `Session` anywhere
@@ -358,6 +361,7 @@ __all__ = ["Base", "User", "Item"]
 ```
 
 **RULES:**
+
 - ALWAYS use `Mapped[T]` typed annotations — NEVER use `Column(...)` bare style
 - ALWAYS define `__tablename__` explicitly
 - NEVER add query methods or `@property` that runs queries inside a model
@@ -434,6 +438,7 @@ class TokenPayload(AppBaseSchema):
 ```
 
 **RULES:**
+
 - EVERY resource needs exactly three schemas: `{R}Create`, `{R}Read`, `{R}Update`
 - `password` field ONLY in `Create` and `Update` — NEVER in `Read`
 - `hashed_password` NEVER appears in any schema
@@ -527,6 +532,7 @@ crud_user = CRUDUser(User)
 ```
 
 **RULES:**
+
 - ALWAYS use `select(Model)` — NEVER use `db.query(Model)` (legacy, deprecated)
 - NEVER raise `HTTPException` in CRUD — return `None` and let services handle it
 - NEVER hash passwords or send emails in CRUD
@@ -587,6 +593,7 @@ async def update_user(
 ```
 
 **RULES:**
+
 - Services are ALWAYS plain `async def` functions — NEVER classes
 - ALWAYS raise `HTTPException` here (not in CRUD, not in routes)
 - ALWAYS hash passwords here before passing to CRUD
@@ -669,6 +676,7 @@ async def delete_user(
 ```
 
 **RULES:**
+
 - EVERY route handler MUST declare `response_model=`
 - ALWAYS use `status.HTTP_XXX` constants — NEVER raw integers like `201`
 - Route handlers MUST NOT contain more than ~10 lines of logic
@@ -800,6 +808,7 @@ async def get_current_superuser(current_user: User = Depends(get_current_active_
 ```
 
 **RULES:**
+
 - `get_db()` is the ONLY function that calls `AsyncSessionLocal()`
 - NEVER create a DB session inside a service, CRUD, or middleware
 - Define all auth guards here: `get_current_user`, `get_current_active_user`, `get_current_superuser`
@@ -1062,6 +1071,7 @@ class IPBlocklistMiddleware(BaseHTTPMiddleware):
 ```
 
 **MIDDLEWARE RULES:**
+
 - ALWAYS inherit `BaseHTTPMiddleware` — never write raw ASGI callables
 - NEVER import from `services/`, `crud/`, `models/`, or `schemas/` in middleware
 - NEVER log `Authorization`, `Cookie`, or `X-Api-Key` headers
@@ -1103,6 +1113,7 @@ def run_migrations_online():
 ```
 
 **RULES:**
+
 - NEVER run `Base.metadata.create_all()` in production — use Alembic only
 - EVERY model change MUST have a migration: `alembic revision --autogenerate -m "description"`
 - NEVER edit a migration that has already been applied to production
@@ -1111,21 +1122,21 @@ def run_migrations_online():
 
 ## NAMING CONVENTIONS — MEMORISE THESE
 
-| What | Convention | Examples |
-|------|-----------|---------|
-| File names | `snake_case.py` | `user_profile.py` |
-| ORM Model class | `PascalCase` | `UserProfile` |
-| Table name | `snake_case` plural | `user_profiles` |
-| Schema class | `PascalCase` + suffix | `UserProfileCreate` |
-| CRUD class | `CRUD` + `PascalCase` | `CRUDUserProfile` |
-| CRUD singleton | `crud_` + `snake_case` | `crud_user_profile` |
-| Service function | `verb_noun` async def | `create_user_profile()` |
-| Route handler | `verb_noun` async def | `create_user_profile()` |
-| Router variable | always `router` | `router = APIRouter()` |
-| Foreign key column | `{singular}_id` | `user_id`, `item_id` |
-| Boolean column | `is_` / `has_` prefix | `is_active`, `has_verified` |
-| Timestamp column | `_at` suffix | `created_at`, `deleted_at` |
-| Env vars | `UPPER_SNAKE_CASE` | `DATABASE_URL` |
+| What               | Convention             | Examples                    |
+| ------------------ | ---------------------- | --------------------------- |
+| File names         | `snake_case.py`        | `user_profile.py`           |
+| ORM Model class    | `PascalCase`           | `UserProfile`               |
+| Table name         | `snake_case` plural    | `user_profiles`             |
+| Schema class       | `PascalCase` + suffix  | `UserProfileCreate`         |
+| CRUD class         | `CRUD` + `PascalCase`  | `CRUDUserProfile`           |
+| CRUD singleton     | `crud_` + `snake_case` | `crud_user_profile`         |
+| Service function   | `verb_noun` async def  | `create_user_profile()`     |
+| Route handler      | `verb_noun` async def  | `create_user_profile()`     |
+| Router variable    | always `router`        | `router = APIRouter()`      |
+| Foreign key column | `{singular}_id`        | `user_id`, `item_id`        |
+| Boolean column     | `is_` / `has_` prefix  | `is_active`, `has_verified` |
+| Timestamp column   | `_at` suffix           | `created_at`, `deleted_at`  |
+| Env vars           | `UPPER_SNAKE_CASE`     | `DATABASE_URL`              |
 
 ---
 
@@ -1208,7 +1219,7 @@ POST /api/v1/users/
 
 ---
 
-*Stack: Python 3.12 · FastAPI 0.115+ · SQLAlchemy 2.0 · Pydantic v2 · Alembic 1.13+ | v2.0*
+_Stack: Python 3.12 · FastAPI 0.115+ · SQLAlchemy 2.0 · Pydantic v2 · Alembic 1.13+ | v2.0_
 
 ---
 
@@ -1216,6 +1227,6 @@ POST /api/v1/users/
 
 © 2026 **Udhayaboopathi V**. All rights reserved.
 
-- Author:  Udhayaboopathi V
+- Author: Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)
-- GitHub:  [github.com/Udhayaboopathi](https://github.com/Udhayaboopathi)
+- GitHub: [github.com/Udhayaboopathi](https://github.com/Udhayaboopathi)
