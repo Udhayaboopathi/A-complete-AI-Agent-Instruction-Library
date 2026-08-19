@@ -1,9 +1,55 @@
 # AGENT INSTRUCTIONS — Next.js Frontend
 
 > **HOW TO USE THIS FILE**
-> Drop this file into your project root. When starting a new chat, say:
+> Drop this file into your project root. When starting a new chat, say one of:
+>
+> **Starting from nothing:**
 > _"Read `NEXTJS_FRONTEND_STRUCTURE.md` deeply and follow every instruction in it for all code you generate."_
+>
+> **You already have a project (any shape, any stack):**
+> _"Read `NEXTJS_FRONTEND_STRUCTURE.md` deeply, then execute the MIGRATION PROTOCOL on this repository. Reorganize the entire project into the structure defined in this file — refactor, do not just rename."_
+>
 > This file is the single source of truth. No exceptions.
+
+---
+
+## OPERATING MODES
+
+Decide your mode **before writing a single line of code**, and state which mode you picked in your first reply.
+
+| What you find in the repository | Mode |
+|---|---|
+| Empty directory, or nothing but untouched `create-next-app` boilerplate | **MODE A — GREENFIELD** |
+| Any existing application source code, of any stack, any size, any quality | **MODE B — MIGRATION** |
+
+**MODE A — GREENFIELD**
+Scaffold the FOLDER STRUCTURE below exactly as written, wire the CODE BLUEPRINTS, then build each feature with the 12-step feature workflow.
+
+**MODE B — MIGRATION**
+Execute the **MIGRATION PROTOCOL** section in full, phase by phase, in order. Do not improvise your own order and do not skip phases.
+
+**The finish line is identical in both modes:** a repository that is indistinguishable from one built greenfield under this file. A reviewer must not be able to tell that MODE B ever happened — no leftovers, no orphan folders, no "legacy" corner, no file that survived only because moving it was easier than fixing it.
+
+---
+
+## MODE B — THE PRIME DIRECTIVE
+
+**Renaming is not migrating. Moving is not migrating.**
+
+A migration is finished when every file in the tree could plausibly have been written from scratch against this document.
+
+| ❌ This is NOT a migration | ✅ This IS a migration |
+|---|---|
+| `mv src/components/UserTable.jsx components/pages/users/components/UserList.tsx` and stopping there | The 340-line `UserTable.jsx` is read, understood, and split into `UserList.tsx` (JSX), `useUsers.ts` (TanStack Query), `user.schema.ts` (Zod), `user.types.ts` (types), and a `ENDPOINTS.users` entry |
+| Keeping `utils.js` and renaming it `utils.ts` | Each function in it is routed to `lib/utils/format.ts`, `lib/utils/cn.ts`, a feature `constants.ts`, or deleted as dead code |
+| Leaving `fetch("/api/users")` inside a component because it "works" | The call moves to a hook, the URL moves to `ENDPOINTS`, the response goes through `normalizePaginated()` |
+| Adding `// @ts-nocheck` or `any` to make a moved file compile | Real types are written in `lib/types/{domain}.types.ts` and the file compiles under `strict: true` |
+| Creating the new tree and leaving the old `src/` beside it | The old tree is deleted; nothing imports from it because nothing needs it |
+| Renaming `Component1.tsx` to `Component1Card.tsx` | The component is read, its actual job is identified, and it is named for that job: `InvoiceSummaryCard.tsx` |
+
+**Behavior is preserved.** A migration changes structure, not product behavior. Every screen, route, form, and API call that worked before must work after. The only intentional behavior changes allowed are the ones this file mandates (centralized auth header, normalized errors, toast placement, role gating). If you find a genuine bug while migrating, do not silently fix it and do not silently keep it — list it in `MIGRATION_REPORT.md` under "Bugs found, not fixed" and ask.
+
+**Nothing is lost.** Every piece of business logic in the source — validation rule, permission check, formatting quirk, edge-case branch — must exist somewhere in the target. If you delete something, it is because it is provably dead, and it is listed in the report.
 
 ---
 
@@ -35,23 +81,50 @@ Dates         : date-fns
 
 ## FOLDER STRUCTURE
 
+This is the complete tree — application code **and** repo scaffolding. Everything a project needs has a place here; nothing belongs outside it. A project is not production-ready because `app/` is tidy — it is production-ready when routes, components, infrastructure, assets, CI, env handling, and repo hygiene are all in place.
+
+`(pagename)`, `{Page}`, and `{feature}` are placeholders — replace them with real domain names (see NAMING CONVENTIONS). Files marked *optional* are added only when the project actually needs them.
+
 ```
 frontend/
 │
+├── .github/                               # Repo automation — never application code
+│   ├── workflows/
+│   │   ├── ci.yml                         # typecheck + lint + build on every PR
+│   │   └── deploy.yml                     # deploy on merge to main (self-hosted only)
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md
+│   │   └── feature_request.md
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── CODEOWNERS
+│   └── dependabot.yml                     # weekly dependency PRs
+│
+├── .vscode/                               # Shared editor defaults — commit these
+│   ├── settings.json                      # format on save, default formatter
+│   └── extensions.json                    # recommend eslint, prettier, tailwind
+│
+├── .husky/                                # Git hooks — optional
+│   └── pre-commit                         # lint-staged
+│
 ├── app/                                   # Routes only — thin shells, zero logic
 │   ├── (pagename)/
-│   │   └── page.tsx  
+│   │   └── page.tsx
 │   │
 │   ├── (pagename)/
 │   │   ├── [ID]
-│   │   │   └── page.tsx 
-│   │   └── page.tsx 
-│   │ 
+│   │   │   └── page.tsx
+│   │   └── page.tsx
+│   │
 │   ├── api/
 │   │   └── auth/[...nextauth]/route.ts
-│   ├── error.tsx
-│   ├── not-found.tsx
-│   ├── globals.css
+│   ├── error.tsx                          # Route-segment error boundary
+│   ├── loading.tsx                        # Streaming fallback
+│   ├── not-found.tsx                      # 404 page
+│   ├── favicon.ico                        # Browser tab icon
+│   ├── opengraph-image.png                # Social share preview — optional
+│   ├── robots.ts                          # Generated robots.txt — public apps
+│   ├── sitemap.ts                         # Generated sitemap.xml — public apps
+│   ├── globals.css                        # Tailwind import + @theme tokens
 │   └── layout.tsx                         # Root — mounts Providers only
 │
 ├── components/
@@ -93,7 +166,7 @@ frontend/
 │           ├── schemas/                   # Zod schemas — PRIVATE to this feature
 │           │   └── {page}.schema.ts
 │           │
-│           └── components/               # Sub-components — PRIVATE to this feature only
+│           └── components/                # Sub-components — PRIVATE to this feature only
 │               ├── {Page}List.tsx
 │               ├── {Page}Card.tsx
 │               ├── {Page}CreateForm.tsx
@@ -104,27 +177,326 @@ frontend/
 │   ├── useDebounce.ts
 │   └── useLocalStorage.ts
 │
-└── lib/                                   # Infrastructure — no JSX, no React hooks
-    ├── api/
-    │   ├── client.ts                      # Axios instance + interceptors
-    │   ├── endpoints.ts                   # Every backend URL — one source of truth
-    │   └── adapters.ts                    # Normalize FastAPI / ASP.NET / Spring Boot responses
-    ├── query/
-    │   ├── client.ts                      # QueryClient singleton
-    │   └── keys.ts                        # Query key factory
-    ├── auth/
-    │   └── config.ts                      # next-auth providers + JWT callbacks
-    ├── store/
-    │   ├── ui.store.ts                    # Sidebar open, theme
-    │   └── auth.store.ts                  # Cached session user
-    ├── types/
-    │   ├── common.types.ts                # PaginatedResponse<T>, ApiError
-    │   └── {feature}.types.ts             # One file per domain — never one global types.ts
-    ├── permissions.ts                     # Role → allowed actions map
-    ├── nav.ts                             # Navigation items
-    └── utils/
-        ├── cn.ts                          # clsx + tailwind-merge
-        └── format.ts                      # formatDate, formatCurrency, formatBytes
+├── lib/                                   # Infrastructure — no JSX, no React hooks
+│   ├── api/
+│   │   ├── client.ts                      # Axios instance + interceptors
+│   │   ├── endpoints.ts                   # Every backend URL — one source of truth
+│   │   └── adapters.ts                    # Normalize FastAPI / ASP.NET / Spring Boot responses
+│   ├── query/
+│   │   ├── client.ts                      # QueryClient singleton
+│   │   └── keys.ts                        # Query key factory
+│   ├── auth/
+│   │   ├── config.ts                      # next-auth providers + JWT callbacks
+│   │   └── types.d.ts                     # Session / JWT type augmentation
+│   ├── store/
+│   │   ├── ui.store.ts                    # Sidebar open, theme
+│   │   └── auth.store.ts                  # Cached session user
+│   ├── types/
+│   │   ├── common.types.ts                # PaginatedResponse<T>, ApiError
+│   │   └── {feature}.types.ts             # One file per domain — never one global types.ts
+│   ├── permissions.ts                     # Role → allowed actions map
+│   ├── nav.ts                             # Navigation items
+│   └── utils/
+│       ├── cn.ts                          # clsx + tailwind-merge
+│       └── format.ts                      # formatDate, formatCurrency, formatBytes
+│
+├── public/                                # Served at the domain root — WORLD-READABLE
+│   ├── images/
+│   │   ├── brand/
+│   │   │   ├── logo.svg
+│   │   │   ├── logo-dark.svg
+│   │   │   └── logo-mark.svg
+│   │   ├── home/                          # One folder per page that owns the imagery
+│   │   │   ├── hero.webp
+│   │   │   └── feature-dashboard.webp
+│   │   └── illustrations/
+│   │       ├── empty-state.svg
+│   │       └── error-404.svg
+│   ├── icons/                             # Standalone SVGs not covered by lucide-react
+│   ├── fonts/                             # ONLY self-hosted fonts — prefer next/font
+│   ├── robots.txt                         # static — or generate via app/robots.ts
+│   └── site.webmanifest                   # static — or generate via app/manifest.ts
+│
+├── .editorconfig                          # Whitespace rules every editor honours
+├── .env                                   # Shared non-secret defaults — COMMITTED
+├── .env.example                           # Template of every required var — COMMITTED
+├── .env.local                             # Real local secrets — NEVER COMMITTED
+├── .env.production                        # Non-secret production defaults — COMMITTED
+├── .gitattributes                         # Line endings, linguist, LFS
+├── .gitignore
+├── .nvmrc                                 # Pinned Node version — CI reads this file
+├── .prettierrc
+├── .prettierignore
+├── .dockerignore                          # Required whenever a Dockerfile exists
+├── Dockerfile                             # Only if the app is self-hosted
+├── LICENSE
+├── README.md                              # Setup, scripts, env vars, architecture
+├── eslint.config.mjs                      # Flat config (next/core-web-vitals)
+├── middleware.ts                          # Auth guard + security headers
+├── next.config.ts                         # HSTS, CSP, images, redirects
+├── next-env.d.ts                          # Generated — commit it, never edit it
+├── package.json
+├── package-lock.json                      # Commit the lockfile. Always.
+├── postcss.config.mjs                     # @tailwindcss/postcss
+└── tsconfig.json                          # strict: true, "@/*": ["./*"]
+```
+
+**Tailwind CSS 4 note:** v4 is CSS-first. Theme tokens live in `app/globals.css` under `@theme`, and `tailwind.config.ts` is optional — create it only when a plugin requires one. Never port a v3 config file across unchanged.
+
+**Nothing outside this tree.** There is no `src/`, no `utils/` at the root, no `containers/`, no `views/`, no `services/`, no second components folder. If you are about to create a top-level folder that is not in this tree, you have misclassified the file — re-read the destination table in PHASE 2.
+
+---
+
+### APP ROUTER SPECIAL FILES
+
+These are Next.js conventions, not free-form files. They live inside `app/`, and Next.js discovers them by name — never rename them.
+
+| File | Purpose | Required? |
+|---|---|---|
+| `app/layout.tsx` | Root layout — mounts `<Providers>` | **Required** |
+| `app/globals.css` | Tailwind import + `@theme` tokens | **Required** |
+| `app/favicon.ico` | Browser tab icon | **Required** |
+| `app/error.tsx` | Route-segment error boundary | **Required** |
+| `app/not-found.tsx` | 404 page | **Required** |
+| `app/loading.tsx` | Streaming fallback | Strongly recommended |
+| `app/icon.png` / `app/apple-icon.png` | Generated app icons | Recommended |
+| `app/opengraph-image.png` | Social share preview | Recommended |
+| `app/robots.ts` | Generated `robots.txt` | Recommended |
+| `app/sitemap.ts` | Generated `sitemap.xml` | Recommended for public pages |
+| `app/manifest.ts` | Generated web manifest (PWA) | Only if installable |
+| `app/(group)/layout.tsx` | Per-shell layout, e.g. `(dashboard)` | Per route group |
+| `app/api/auth/[...nextauth]/route.ts` | next-auth handler | Required with auth |
+
+Use **either** `app/robots.ts` **or** `public/robots.txt` — never both. Same for the manifest. Generated wins when the value depends on the environment.
+
+---
+
+### `public/` RULES
+
+`public/` is served at the domain root and is **world-readable by anyone**. Treat it as published, not as storage.
+
+```
+✓  Organize by purpose:  images/brand/, images/{page}/, icons/, fonts/
+✓  kebab-case file names:  hero-banner.webp,  logo-dark.svg,  empty-state.svg
+✓  Photos and screenshots → .webp (or .avif). Never ship a 4 MB .png hero.
+✓  Icons and logos → .svg, optimized (no editor metadata, no embedded rasters)
+✓  Reference with a root-absolute path:  /images/brand/logo.svg
+✓  Render through next/image with explicit width, height, and alt
+
+✗  NEVER prefix a folder with its parent:  public/public-logo/  →  public/images/brand/
+✗  NEVER put .env files, backups, exports, invoices, or internal docs in public/
+✗  NEVER put .ts/.tsx/.js source files in public/ — they are shipped unminified
+✗  NEVER import from public/ — it is fetched by URL, not bundled
+✗  NEVER leave unreferenced assets behind after a migration
+✗  NEVER use spaces, capitals, or copy suffixes:  "Hero Image (1).PNG"
+```
+
+| Asset | Where it goes | Why |
+|---|---|---|
+| Logo, wordmark, brand marks | `public/images/brand/` | Static, cached, reused everywhere |
+| Marketing/page-specific imagery | `public/images/{page}/` | Grouped by the page that uses it |
+| Empty-state / error illustrations | `public/images/illustrations/` | Shared across features |
+| One-off SVG icons | `public/icons/` | lucide-react covers the rest |
+| Self-hosted font files | `public/fonts/` | Prefer `next/font` — no file needed |
+| User-uploaded content | **Nowhere** — the backend serves it | `public/` is build-time only |
+
+---
+
+### `.github/workflows/ci.yml`
+
+Every project gets CI. A structure rule that nothing enforces is a suggestion.
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL:      ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_BACKEND_TYPE: ${{ vars.NEXT_PUBLIC_BACKEND_TYPE }}
+          NEXTAUTH_URL:             ${{ vars.NEXTAUTH_URL }}
+          NEXTAUTH_SECRET:          ${{ secrets.NEXTAUTH_SECRET }}
+```
+
+**Workflow rules:**
+- Secrets come from `${{ secrets.* }}`, non-secret config from `${{ vars.* }}`. Never inline a real value in YAML.
+- The Node version comes from `.nvmrc` so CI and laptops cannot drift.
+- CI runs the same three gates as PHASE 9: `tsc --noEmit`, `lint`, `build`. A migration is not finished until CI is green.
+- Never add `continue-on-error: true` to a quality gate.
+- If the host (Vercel, Netlify, Amplify) already builds on push, `deploy.yml` is unnecessary — do not add a second deploy path.
+
+---
+
+### ENVIRONMENT FILE MATRIX
+
+Next.js loads several env files with a defined precedence. Get this wrong and secrets leak or builds break.
+
+| File | Loaded when | Commit? | May contain secrets? |
+|---|---|---|---|
+| `.env` | Always, lowest priority | ✅ Yes | ❌ Never |
+| `.env.development` | `next dev` | ✅ Yes | ❌ Never |
+| `.env.production` | `next build` / `next start` | ✅ Yes | ❌ Never |
+| `.env.local` | Always except `test`, overrides the above | ❌ **Never** | ✅ Yes |
+| `.env.development.local` | `next dev`, highest priority | ❌ **Never** | ✅ Yes |
+| `.env.production.local` | production, highest priority | ❌ **Never** | ✅ Yes |
+| `.env.example` | Never loaded — documentation only | ✅ Yes | ❌ Never (empty values) |
+
+```
+Precedence:  .env.{mode}.local  >  .env.local  >  .env.{mode}  >  .env
+```
+
+**Rules:**
+- Committed env files hold **non-secret defaults only** — public API base URLs, feature flags, backend type. Anything that would hurt if it appeared on GitHub belongs in `.env.local` or in the hosting platform's secret store.
+- `NEXTAUTH_SECRET`, API keys, and database URLs never live in a committed file. In production they come from the host's environment settings, not from `.env.production`.
+- Every variable that appears in any env file must also appear in `.env.example` with an empty value.
+- `NEXT_PUBLIC_*` is compiled into the browser bundle and is readable by every visitor. Never prefix a secret with it.
+- `.gitignore` must contain `.env*.local` (and must NOT ignore `.env.example`).
+
+---
+
+### `.gitignore` BASELINE
+
+```gitignore
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts.bak
+
+# env — local files only; .env / .env.example / .env.production stay tracked
+.env*.local
+
+# testing & coverage
+coverage/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vercel
+*.tsbuildinfo
+```
+
+---
+
+### `package.json` SCRIPTS BASELINE
+
+```json
+{
+  "scripts": {
+    "dev":        "next dev",
+    "build":      "next build",
+    "start":      "next start",
+    "lint":       "next lint",
+    "typecheck":  "tsc --noEmit",
+    "format":     "prettier --write .",
+    "verify":     "npm run typecheck && npm run lint && npm run build"
+  }
+}
+```
+
+`npm run verify` is the single command that reproduces CI locally. Run it before declaring any migration or feature complete.
+
+---
+
+### `README.md` MINIMUM CONTENTS
+
+A README that says "run npm install" is not documentation.
+
+```
+1. What this app is        one paragraph, and which backend it talks to
+2. Prerequisites           Node version (matches .nvmrc), package manager
+3. Setup                   clone → cp .env.example .env.local → fill → npm ci → npm run dev
+4. Environment variables   a table: name | required | example | what it does
+5. Scripts                 what each npm script does
+6. Architecture            a short pointer to this structure file — do not duplicate it
+7. Deployment              where it deploys, what triggers it
+```
+
+---
+
+### OPTIONAL — ADD ONLY WHEN THE PROJECT ACTUALLY NEEDS IT
+
+Do not scaffold these by reflex. An empty folder is clutter, and clutter is what this document exists to prevent.
+
+| Folder / file | Add when |
+|---|---|
+| `Dockerfile` + `.dockerignore` | The app is self-hosted rather than deployed to Vercel/Netlify |
+| `.husky/` + `lint-staged` config | The team wants pre-commit enforcement |
+| `tests/` or co-located `*.test.tsx` | A test runner is actually part of the stack |
+| `.github/dependabot.yml` | The repo is long-lived and maintained |
+| `CHANGELOG.md` | The project is versioned and released |
+| `CONTRIBUTING.md` | More than one team contributes |
+| `tailwind.config.ts` | A Tailwind plugin requires a JS config under v4 |
+| `instrumentation.ts` | Sentry / OpenTelemetry is wired up |
+
+---
+
+### MODE B — MIGRATING THE ROOT LAYER
+
+The root layer is migrated in PHASE 3 and cleaned in PHASE 8. It is part of the file ledger, not an afterthought.
+
+```
+CI          Port the old pipeline's real steps into .github/workflows/ci.yml.
+            Delete CircleCI / Travis / Jenkins / GitLab configs once CI is green.
+            Never carry two CI systems forward.
+
+Assets      Move every referenced asset into the public/ tree above, renaming to
+            kebab-case and fixing wrong extensions on the way. Convert oversized
+            PNG/JPG heroes to .webp. Update every reference in the same commit.
+            Delete unreferenced assets — list them in the report.
+
+Env         Merge every old env file (.env, .env.development, REACT_APP_*,
+            VITE_*) into the matrix above, renaming browser-exposed vars to
+            NEXT_PUBLIC_*. Audit for secrets that were committed: if a real
+            secret exists in git history, say so plainly in the report and tell
+            the user to rotate it — removing the file does not un-leak it.
+
+Configs     Replace CRA / Vite / Babel / webpack configs with the blueprints
+            here. Old ESLint and Prettier configs are replaced, not merged.
+
+Docs        Rewrite README.md against the template above. A README describing
+            the old structure is worse than no README.
+
+Root junk   Delete: *.bak, *.old, "* copy.*", stray .txt notes, unused
+            Dockerfiles, dead scripts in package.json, unused .vscode settings.
 ```
 
 ---
@@ -1321,6 +1693,580 @@ STEP 12  lib/permissions.ts  (if role-gated)
 
 ---
 
+## MIGRATION PROTOCOL
+
+> Run this section top to bottom whenever the repository already contains code (**MODE B**).
+> Ten phases. Each phase has an exit condition. Do not start phase N+1 until phase N's exit condition is met.
+
+```
+PHASE 0   Safety & scope gate          → branch created, scope confirmed
+PHASE 1   Inventory                    → full picture of what exists, read-only
+PHASE 2   Domain map & migration plan  → MIGRATION_PLAN.md written and shown
+PHASE 3   Scaffold the target skeleton → target tree + config files in place
+PHASE 4   Infrastructure first (lib/)  → lib/ complete and type-checking
+PHASE 5   Feature-by-feature refactor  → each feature fully rebuilt, one at a time
+PHASE 6   Route layer                  → app/ is thin shells only
+PHASE 7   Cross-cutting wiring         → shell, nav, permissions, providers
+PHASE 8   Delete the old world         → zero legacy files, zero dead code
+PHASE 9   Verification gates           → every automated gate passes
+PHASE 10  Report                       → MIGRATION_REPORT.md handed over
+```
+
+---
+
+### PHASE 0 — SAFETY & SCOPE GATE
+
+```
+0.1  Confirm this is a web frontend project.
+     If the repository is a backend API, a mobile app, or a headless library,
+     STOP. Tell the user which file from the library applies instead
+     (Backend/*, Frontend/FLUTTER_STRUCTURE.md, ...). Never force this
+     structure onto a project it was not written for.
+
+0.2  Confirm the working tree is clean:  git status --porcelain
+     If it is not clean, STOP and ask the user to commit or stash first.
+     Never begin a migration on top of uncommitted work.
+
+0.3  Create the working branch:  git checkout -b refactor/project-structure
+     Never migrate directly on main / master.
+
+0.4  Confirm the frontend root. In a monorepo, or when the frontend is nested
+     (/client, /web, /ui, or inside the backend repo), this structure applies
+     to that folder — it is "the project root" everywhere below. State the path
+     you chose. Never touch files outside it.
+
+0.5  Read, do not run. Do not execute build/dev/test scripts of unknown origin,
+     and never run a destructive command (rm -rf, git clean, git reset --hard,
+     git checkout --) without stating exactly what it deletes and getting a yes.
+```
+
+**Exit condition:** fresh branch, clean tree, frontend root identified and stated out loud.
+
+---
+
+### PHASE 1 — INVENTORY (READ-ONLY)
+
+Change nothing in this phase. A migration planned from a partial reading of the code will strand logic.
+
+```
+1.1  Stack detection — read each if present:
+     package.json ............ framework, versions, scripts, every dependency
+     next.config.* ........... existing config, redirects, images, headers
+     tsconfig / jsconfig ..... TypeScript or JavaScript? strict? path aliases?
+     tailwind.config.* ....... Tailwind version, theme tokens, plugins
+     .env* ................... every variable in use (never print secret VALUES)
+     README / docs ........... intent, domain vocabulary, deploy target
+
+1.2  Route detection:
+     app/**/page.*   ......... App Router routes
+     pages/**/*.*    ......... Pages Router routes
+     src/App.* + router ...... SPA (React Router) routes
+     Record for each: path, params, auth requirement, layout used.
+
+1.3  Every network call — the highest-value scan in this phase:
+     grep -rn "fetch(|axios|useQuery|useSWR|XMLHttpRequest" src app pages components
+     Record: URL, method, request shape, response shape, calling file.
+
+1.4  Every form and validation rule:
+     grep -rn "onSubmit|useForm|yup|zod|joi|validate" src app pages components
+
+1.5  Every state container:
+     grep -rn "createContext|useReducer|redux|zustand|jotai|recoil|mobx" src app
+
+1.6  Every auth / role check:
+     grep -rn "token|localStorage|sessionStorage|Authorization|role|permission|isAdmin"
+
+1.7  Size and shape:
+     - Files over 200 lines .......... certain split candidates, list them
+     - Duplicates .................... two Buttons, three modals, four date formatters
+     - Dead files .................... no inbound imports anywhere
+     - Junk .......................... *.bak, *.old, *copy*, *.txt, commented-out blocks
+
+1.8  Assets and styles: public/, images, fonts, global CSS, CSS Modules,
+     styled-components, SCSS. Note what must become Tailwind and what is
+     genuinely global (globals.css).
+```
+
+**Exit condition:** you can name every route, every API endpoint, every form, and every state store in the source project without re-reading it.
+
+---
+
+### PHASE 2 — DOMAIN MAP & MIGRATION PLAN
+
+This is the phase that separates a real migration from a file shuffle. **Features are discovered from the domain, never from the old folder names.**
+
+#### 2.1 Derive the feature list
+
+A feature is a **business noun the app manages**, not a folder that happens to exist. Find them by intersecting four sources:
+
+```
+Routes            /users, /orders, /orders/[id]        → users, orders
+API endpoints     /api/v1/invoices, /api/v1/customers  → invoices, customers
+Domain types      interface Product, class Invoice     → products, invoices
+Screen titles     "Manage Suppliers"                   → suppliers
+```
+
+Merge synonyms into ONE canonical name. If `client`, `customer`, and `account` all describe the same entity, pick one and use it everywhere — folder, component prefix, type, endpoint, query key, nav label, permission key. Record that decision in the plan; consistency across the whole codebase depends on it.
+
+#### 2.2 Classify every source file
+
+Every source file gets exactly one destination and exactly one action. No file may end up unclassified — "leave it where it is" is not a valid outcome.
+
+**Destination decision table**
+
+| What the file actually is | Destination |
+|---|---|
+| A route entry point (page, screen, view) | `app/(group)/{route}/page.tsx` — thin shell only |
+| The real content of a screen | `components/pages/{feature}/{Feature}Page.tsx` |
+| A detail / edit screen for one record | `components/pages/{feature}/{Feature}DetailPage.tsx` |
+| A piece used by exactly one feature | `components/pages/{feature}/components/{Feature}{Thing}.tsx` |
+| A piece used by 2+ features, carries business meaning | `components/shared/` |
+| A styling-only primitive with zero business rules | `components/ui/` |
+| App chrome: shell, sidebar, navbar, page header | `components/layout/` |
+| Data fetching for one feature | `components/pages/{feature}/hooks/use{Feature}.ts` |
+| Reusable non-feature hook (debounce, storage, pagination) | `hooks/` |
+| Validation rules for one feature's forms | `components/pages/{feature}/schemas/{feature}.schema.ts` |
+| Domain interfaces / DTO shapes | `lib/types/{domain}.types.ts` |
+| A backend URL, anywhere | `lib/api/endpoints.ts` |
+| HTTP setup, interceptors, retries, headers | `lib/api/client.ts` |
+| Backend-shape differences (pagination, errors) | `lib/api/adapters.ts` |
+| Cache keys / query keys | `lib/query/keys.ts` |
+| Auth config, providers, JWT callbacks | `lib/auth/config.ts` |
+| UI-only client state (sidebar, theme, modals) | `lib/store/{name}.store.ts` |
+| Role → action rules, `isAdmin` checks | `lib/permissions.ts` |
+| Menu / nav definitions, hardcoded sidebar links | `lib/nav.ts` |
+| Pure helpers: formatting, class merging | `lib/utils/` |
+| Magic strings / numbers used by one feature | `components/pages/{feature}/constants.ts` |
+| Route protection, security headers | `middleware.ts` |
+| Static files served as-is | `public/` |
+| Dead, duplicated, or superseded by a blueprint | **DELETE** |
+
+**Action vocabulary** — tag every file with exactly one:
+
+```
+REWRITE          Rebuild against the blueprint in this file. The default for
+                 anything infrastructure-shaped (http client, auth, stores).
+SPLIT            One file → several, each with a single responsibility.
+EXTRACT-HOOK     Data fetching pulled out of JSX into a TanStack Query hook.
+EXTRACT-SCHEMA   Manual / yup / joi validation converted to a Zod schema.
+EXTRACT-TYPES    Inline or implicit shapes promoted to lib/types/{domain}.types.ts.
+PROMOTE          Feature-local file used by 2+ features → shared/ or ui/.
+DEMOTE           "Shared" file used by exactly one feature → into that feature.
+PORT             Logic kept, surface rewritten (JS→TS, CSS→Tailwind, Pages→App).
+MOVE             Copied across unchanged. Legal ONLY for a file that already
+                 obeys every rule in this document. Expect this to be rare.
+DELETE           Dead, duplicate, junk, or replaced by a blueprint.
+```
+
+#### 2.3 Write `MIGRATION_PLAN.md`
+
+Create it at the frontend root with these ten sections:
+
+```
+1.  Source assessment     stack, size, TS/JS, state libs, quality notes
+2.  Target confirmation   the TECH STACK table + any deviation you must flag
+                          (e.g. "project has no auth → next-auth omitted")
+3.  Feature list          canonical names + the vocabulary decisions made
+4.  Route map             old route → new route (+ route group, + auth needed)
+5.  File ledger           every source file → destination + action + one-line note
+6.  Endpoint ledger       every discovered URL → ENDPOINTS.{feature}.{action}
+7.  Dependency changes    to add / to remove, each with a reason
+8.  Risk list             biggest files, tangled logic, anything ambiguous
+9.  Open questions        everything you had to guess
+10. Commit sequence       the order features will be migrated in
+```
+
+#### 2.4 STOP-AND-CONFIRM GATE
+
+**Present `MIGRATION_PLAN.md` and wait for approval before modifying any existing file.** This is the one mandatory pause in the protocol. If the user has already said "just do it", still write the plan and still surface the feature list and open questions — then proceed without waiting.
+
+**Exit condition:** `MIGRATION_PLAN.md` exists, every source file appears in the ledger exactly once, the user has seen it.
+
+---
+
+### PHASE 3 — SCAFFOLD THE TARGET SKELETON
+
+Create the target tree from the FOLDER STRUCTURE section — real folders, not placeholders — then put the config layer in place:
+
+```
+3.1  tsconfig.json      exactly as specified (strict: true, "@/*": ["./*"])
+3.2  next.config.ts     from the blueprint (HSTS + CSP)
+3.3  middleware.ts      from the blueprint (PROTECTED starts empty, filled in Phase 6)
+3.4  .env.example       committed, empty values
+3.5  .env.local         real values carried over from the old env file(s)
+3.6  .gitignore         must contain .env.local, node_modules, .next
+3.7  app/globals.css    Tailwind layers + design tokens
+3.8  package.json       add the exact TECH STACK; queue forbidden libraries for
+                        removal (redux, moment, yup/joi, styled-components,
+                        bespoke fetch wrappers) — remove them in Phase 8, once
+                        nothing imports them
+3.9  public/            the asset tree from FOLDER STRUCTURE; move and rename
+                        every asset as it is referenced
+3.10 .github/workflows/ci.yml   typecheck + lint + build on every PR
+3.11 Root defaults      .editorconfig, .nvmrc, .prettierrc, .gitattributes,
+                        eslint.config.mjs, postcss.config.mjs, LICENSE
+3.12 app/ metadata      favicon.ico, error.tsx, not-found.tsx, loading.tsx,
+                        robots.ts / sitemap.ts when the app has public pages
+3.13 README.md          rewritten against the template — never left describing
+                        the old structure
+```
+
+Rules for this phase:
+- Build the new tree **alongside** the old code, never on top of it. The old code keeps compiling until Phase 8 deletes it.
+- Do not create a folder this project will never use. Every folder that exists at the end must hold real files.
+- No `.gitkeep` graveyard.
+
+**Exit condition:** target folders exist, config files match the blueprints, `npx tsc --noEmit` runs (old code may still report errors).
+
+---
+
+### PHASE 4 — INFRASTRUCTURE FIRST (`lib/`)
+
+Nothing in `components/` can be built correctly until `lib/` is right. Build in exactly this order — each step depends on the one above it:
+
+```
+4.1  lib/types/common.types.ts     ApiError, PaginatedResponse<T>
+4.2  lib/types/{domain}.types.ts   one file per feature noun from Phase 2.
+                                   Harvest real shapes from the old code and
+                                   from actual API responses. Never `any`,
+                                   never one global types.ts.
+4.3  lib/api/endpoints.ts          EVERY URL found in Phase 1.3. After this
+                                   step, no URL string may exist anywhere else.
+4.4  lib/api/adapters.ts           from the blueprint; set BACKEND to match
+4.5  lib/api/client.ts             from the blueprint. Replaces every old fetch
+                                   wrapper, axios instance, and hand-rolled
+                                   auth-header helper.
+4.6  lib/query/client.ts + keys.ts one key block per feature
+4.7  lib/auth/config.ts + types.d.ts   port the old login flow into the
+                                   Credentials provider; token handling that
+                                   used localStorage moves into the JWT callback
+4.8  lib/store/ui.store.ts         only the UI state that survived triage
+     lib/store/auth.store.ts       read cache only — never tokens
+4.9  lib/utils/cn.ts + format.ts   deduplicate every formatter found in Phase 1
+4.10 lib/permissions.ts            every isAdmin / role check from Phase 1.6
+                                   collapses into this one map
+4.11 lib/nav.ts                    every hardcoded sidebar / menu link
+```
+
+Migration rules for this layer:
+
+- **Tokens leave browser storage.** `localStorage.getItem("token")` and every manual `Authorization` header disappear; the next-auth session plus the request interceptor replace them. This is a mandated behavior change — record it in the report.
+- **One HTTP client.** Every `api.js`, `http.js`, `request.ts`, `useFetch`, and bare `fetch` collapses into `apiClient`.
+- **Shapes normalize at the edge.** Every list call goes through `normalizePaginated()`; components never see `totalElements` or `pageNumber`.
+- **Duplicate helpers collapse.** Three date formatters become one `formatDate` — pick the most correct implementation, not the first one you found.
+
+**Exit condition:** `lib/` type-checks, contains no JSX and no React hooks, and every endpoint from the Phase 2 ledger is present.
+
+---
+
+### PHASE 5 — FEATURE-BY-FEATURE REFACTOR
+
+Migrate **one feature at a time**, in the Phase 2 commit sequence. Finish a feature completely — types through route — before starting the next. Never leave two features half-migrated at once.
+
+For each feature, run the 12 steps from **WHEN ADDING A NEW FEATURE**, sourcing the content from the old code instead of inventing it.
+
+#### 5.1 Decomposing a god component
+
+Old projects concentrate everything in one big file. Read it fully, then take it apart along these lines:
+
+| What you find inside the old file | Where it goes |
+|---|---|
+| `useEffect` + `fetch` + `setState` triple | `hooks/use{Feature}.ts` → `useQuery` |
+| POST/PUT/PATCH/DELETE handler | `hooks/use{Feature}.ts` → `useMutation` |
+| `if (!email.includes("@")) setError(...)` | `schemas/{feature}.schema.ts` → Zod |
+| Inline `type Row = { ... }` for a domain object | `lib/types/{domain}.types.ts` |
+| The `<table>` / list rendering | `components/{Feature}List.tsx` |
+| The create form | `components/{Feature}CreateForm.tsx` |
+| The edit form | `components/{Feature}EditForm.tsx` |
+| A row/card presentation unit | `components/{Feature}Card.tsx` |
+| Filter/search bar | `components/{Feature}Filters.tsx` |
+| Modal shell with no business rules | `components/ui/Modal.tsx` (reuse, don't re-create) |
+| Status/severity chip | `components/ui/Badge.tsx` |
+| `const STATUSES = [...]` | `constants.ts` |
+| Layout, orchestration, local UI state | `{Feature}Page.tsx` |
+| `alert()` / `console.log` success messages | `toast` inside the mutation's `onSuccess` |
+| `try/catch` around every call | deleted — the interceptor owns error handling |
+| `if (user.role === "admin")` sprinkled inline | `lib/permissions.ts` + `<RoleGate>` |
+
+**Splitting thresholds** — apply judgment, but these are the defaults:
+
+```
+Component file > 200 lines          → split
+Component doing fetch + render      → split (hook + JSX)
+Component with 3+ useState for      → likely two components
+  unrelated concerns
+A file whose name needs "and"       → split
+  ("UserListAndFilters")
+JSX nested more than 4 levels deep  → extract the inner block
+```
+
+Equally: **do not over-split.** A 30-line card used once does not need its own folder. The unit of extraction is a responsibility, not a line count.
+
+#### 5.2 Rewrite rules applied to every migrated file
+
+```
+✓ "use client" added ONLY where the SERVER vs CLIENT rules require it
+✓ Props typed with an explicit interface — no implicit any, no React.FC
+✓ Every string that faces the user stays user-facing; no debug text ships
+✓ Class names via Tailwind + cn(); inline style objects are removed
+✓ Imports use "@/..." — every relative cross-folder path is rewritten
+✓ Dead props, unused state, and commented-out code are removed, not carried
+✓ Keys, ids, and list rendering fixed to use stable ids (never array index)
+✓ Loading state uses Skeleton, empty state uses EmptyState — not raw text
+✓ Accessibility kept or improved: labels tied to inputs, buttons are <button>
+```
+
+#### 5.3 Per-feature exit gate
+
+Before moving to the next feature, all of these must hold:
+
+```
+[ ] npx tsc --noEmit passes for the migrated feature
+[ ] The feature's route renders and its screens behave as they did before
+[ ] No fetch/axios/URL string remains anywhere inside the feature
+[ ] No hook file (use*.ts) sits inside a components/ JSX folder
+[ ] Nothing outside the feature imports its private sub-components
+[ ] git commit -m "refactor({feature}): migrate to standard structure"
+```
+
+**Exit condition:** every feature from the Phase 2 list has passed its own gate, each in its own commit.
+
+---
+
+### PHASE 6 — ROUTE LAYER
+
+```
+6.1  Recreate every route from the Phase 1.2 route map under app/.
+     Old → new mapping:
+       pages/users/index.jsx        → app/(dashboard)/users/page.tsx
+       pages/users/[id].jsx         → app/(dashboard)/users/[id]/page.tsx
+       <Route path="/users" .../>   → app/(dashboard)/users/page.tsx
+       pages/_app.jsx               → app/layout.tsx + components/shared/Providers.tsx
+       pages/_document.jsx          → app/layout.tsx
+       pages/api/*                  → keep only what MUST run on the Next server;
+                                      everything the backend already owns is deleted
+
+6.2  Group routes by shell, not by feature:
+       (auth)      login, register, forgot-password   — no app shell
+       (dashboard) every authenticated screen         — AppShell
+     Route groups never appear in the URL.
+
+6.3  Every page.tsx: metadata + one import + one return. 8 lines maximum.
+
+6.4  Add error.tsx, loading.tsx, not-found.tsx from the blueprints.
+
+6.5  middleware.ts: fill PROTECTED with every authenticated route prefix,
+     AUTH_ONLY with every login/register prefix.
+
+6.6  Preserve URLs. If a path must change, add a redirect in next.config.ts
+     and list it in the report. Silently breaking a bookmarked URL is a defect.
+```
+
+**Exit condition:** every old route resolves in the new app, no `page.tsx` exceeds 8 lines, no `page.tsx` carries `"use client"`.
+
+---
+
+### PHASE 7 — CROSS-CUTTING WIRING
+
+```
+7.1  components/shared/Providers.tsx     one QueryClientProvider, one Toaster,
+                                         one SessionProvider — mounted once
+7.2  components/layout/AppShell.tsx      the shell the old app had, rebuilt
+7.3  components/layout/Sidebar.tsx       renders NAV_ITEMS from lib/nav.ts,
+     components/layout/MobileNav.tsx     filtered by the session role
+7.4  components/shared/RoleGate.tsx      wraps can() from lib/permissions.ts
+7.5  components/shared/ErrorBoundary.tsx
+7.6  components/ui/*                     the deduplicated primitive set: one
+                                         Button, one Input, one Modal, one Card
+7.7  Theme + globals.css                 tokens consistent with Tailwind config
+```
+
+**Exit condition:** no duplicated primitive remains, no hardcoded nav link exists in any component, no second `Toaster` or `QueryClient` exists.
+
+---
+
+### PHASE 8 — DELETE THE OLD WORLD
+
+The migration is not real until the old code is gone.
+
+```
+8.1  Delete the legacy trees: src/, pages/, old components/, old utils/, and
+     every file marked DELETE in the ledger.
+8.2  Delete dead code: unreferenced components, unused exports, commented-out
+     blocks, TODO stubs that were never implemented.
+8.3  Delete junk: *.bak, *.old, *copy*, *.txt notes, unused images and fonts.
+8.4  Remove now-unused dependencies from package.json, then reinstall so the
+     lockfile matches.
+8.5  Remove obsolete config: CRA/Vite configs, old ESLint/Babel configs, dead
+     scripts in package.json, unused env vars in .env.example.
+8.6  Confirm zero imports point at a deleted path.
+8.7  Delete old CI (CircleCI, Travis, Jenkins, GitLab), root junk (*.bak,
+     *.old, "* copy.*", stray .txt notes), and every unreferenced asset
+     left in public/.
+```
+
+Never delete a file until its replacement compiles and its route renders. Delete in one dedicated commit — `chore: remove legacy structure` — so the diff is reviewable and revertible.
+
+**Exit condition:** `git status` shows the legacy paths deleted, the build passes, nothing references a removed module.
+
+---
+
+### PHASE 9 — VERIFICATION GATES
+
+All of these must pass. Fix, then re-run — never report a gate as passing without running it, and never disable a rule to make a gate green.
+
+**Build gates**
+
+```bash
+npx tsc --noEmit        # zero errors, strict mode
+npm run lint            # zero errors
+npm run build           # production build succeeds
+```
+
+**Structure gates** — each search must return NOTHING:
+
+```bash
+# LAW 1 — no client directive or hooks in route files
+grep -rn "use client" app --include=page.tsx --include=layout.tsx
+grep -rn "useState\|useEffect\|useQuery" app --include=page.tsx
+
+# LAW 2 — no hook files hiding inside components/
+find components -name "use*.ts" -not -path "*/hooks/*"
+
+# LAW 3 — no JSX or React hooks in lib/
+grep -rn "useState\|useEffect\|return (" lib --include=*.tsx
+
+# One HTTP client, no stray URLs
+grep -rn "from \"axios\"" app components hooks lib --include=*.ts --include=*.tsx | grep -v "lib/api/client.ts"
+grep -rn "fetch(\"http\|https\?://" app components hooks
+
+# No relative cross-folder imports
+grep -rn "from \"\.\./\.\./" app components hooks lib
+
+# No forbidden libraries
+grep -rn "moment\|redux\|styled-components\|yup\|joi" package.json app components lib
+
+# No escape hatches
+grep -rn "@ts-ignore\|@ts-nocheck\|: any\b" app components hooks lib
+
+# No stray leftovers
+find . -name "*.bak" -o -name "*copy*" -o -name "*.old" -not -path "./node_modules/*"
+
+# Env hygiene — no local/secret env file may be tracked
+git ls-files | grep -E "\.env" | grep -E "\.local$"
+grep -rn "NEXT_PUBLIC_[A-Z_]*\(SECRET\|KEY\|PASSWORD\|TOKEN\)" .env* app components lib
+
+# public/ hygiene — no code, no env files, no spaces in names
+find public -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name ".env*" -o -name "* *"
+```
+
+**Presence gates** — each must exist and be correct:
+
+```bash
+test -f .github/workflows/ci.yml    # runs typecheck + lint + build
+test -f .env.example                # every var documented, values empty
+test -f .gitignore && grep -n "env\*.local" .gitignore
+test -f README.md                   # rewritten, not the old one
+test -f app/favicon.ico
+test -f app/error.tsx
+test -f app/not-found.tsx
+```
+
+**Manual gates**
+
+```
+[ ] Cross-feature import check: for each feature, confirm no file outside
+    components/pages/{feature}/ imports anything inside its components/ folder
+[ ] Every route from the Phase 1 route map resolves
+[ ] Login → protected route → logout works end to end
+[ ] Every form validates through Zod and shows per-field errors
+[ ] Every list uses normalizePaginated()
+[ ] Every file in the ledger reached its destination; nothing is orphaned
+```
+
+**Exit condition:** every command above is clean and every manual box is ticked.
+
+---
+
+### PHASE 10 — REPORT
+
+Write `MIGRATION_REPORT.md` at the frontend root:
+
+```
+1.  Summary                  what the project was, what it is now, in 5 lines
+2.  Structure before/after   two trees, side by side
+3.  Feature ledger           feature → files created → source files consumed
+4.  Route map                old URL → new URL, with any redirects added
+5.  Behavior changes         every mandated change (auth storage, error handling,
+                             toasts, role gating) and why
+6.  Deleted                  files, dependencies, and dead code removed + reasons
+7.  Bugs found, not fixed    anything broken in the source; nothing silently fixed
+8.  Deviations               any place the structure could not be followed literally,
+                             with justification
+9.  Follow-ups               tests, a11y debt, TODOs the migration surfaced
+10. Verification output      the result of every Phase 9 gate
+```
+
+Then summarize the same content in chat — do not make the user open the file to learn whether the migration succeeded.
+
+**Exit condition:** report written, gates reported honestly, branch ready for review.
+
+---
+
+### SOURCE-SPECIFIC CONVERSION RULES
+
+The protocol above is the same regardless of what you are handed. These are the extra rules per source type.
+
+| Source | What changes |
+|---|---|
+| **Next.js App Router, messy** | Structure only. Keep the routes, apply Phases 2–9 to redistribute components, hooks, types, and infrastructure. |
+| **Next.js Pages Router** | `pages/` → `app/` with route groups; `_app` → `layout.tsx` + `Providers`; `getServerSideProps` / `getStaticProps` → Server Components or TanStack Query; `next/router` → `next/navigation`; `pages/api/*` kept only where the Next server genuinely must own the call. |
+| **CRA / Vite React SPA** | React Router routes → App Router folders; `index.html` → `app/layout.tsx`; env `REACT_APP_*` / `VITE_*` → `NEXT_PUBLIC_*`; browser-only components get `"use client"`; anything that can be a Server Component becomes one. |
+| **JavaScript, no TypeScript** | Every file is ported to `.ts` / `.tsx` with real types derived from actual API payloads and prop usage. `any` is not a migration strategy; `@ts-nocheck` is never acceptable. |
+| **CSS Modules / SCSS / styled-components** | Converted to Tailwind utilities plus `cn()`. Design tokens (colors, spacing, radii) move into the Tailwind theme. Only true globals stay in `globals.css`. |
+| **Redux / MobX / Context state** | Server data → TanStack Query. UI-only state → Zustand. Derived state → computed at render. Most of the old store disappears; that reduction is the point. |
+| **Class components** | Converted to function components with hooks. `componentDidMount` fetches become `useQuery`. |
+| **A different framework entirely (Angular, Vue, Svelte)** | Treat the source as a specification, not as code to move. Extract routes, domain models, validation rules, permissions, and API contracts, then build the Next.js app fresh from this file. The file ledger maps source features to new files rather than source files to new files. |
+| **Frontend nested in a backend repo** | Keep it in place unless asked; apply the structure inside that folder only. Never restructure the backend from this file. |
+
+---
+
+### MEANINGFUL NAMING — HOW TO NAME WHAT YOU MIGRATE
+
+Old projects arrive with names that describe nothing. Every name you create must describe **what the thing is, in the language of the domain**.
+
+**Banned outright** — if a source file carries one of these, renaming it meaningfully is part of the migration:
+
+```
+✗ Component1.tsx, Comp2.tsx, Test.tsx, Temp.tsx, New*.tsx, Old*.tsx, Final*.tsx
+✗ utils2.ts, helpers.ts, misc.ts, common.ts, stuff.ts, functions.ts, index.ts (non-barrel)
+✗ data.ts, list.tsx, item.tsx, form.tsx, page2.tsx, main.tsx, wrapper.tsx
+✗ MyComponent, TheThing, Handler, Manager, Processor with no noun attached
+✗ untitled, copy of, - Copy, v2, final_final
+```
+
+**Derivation rules**
+
+```
+Feature folder      plural, lowercase, canonical domain noun    users/  invoices/
+Type / model        singular PascalCase                         User    Invoice
+Type file           singular, lowercase                         user.types.ts
+Component prefix    singular PascalCase feature name            UserList, InvoiceCard
+Page component      {Feature}Page — feature name plural         UsersPage, InvoicesPage
+Detail page         {Entity}DetailPage — entity singular        UserDetailPage
+Hook file           use{Feature} — matches the feature folder   useUsers.ts
+Route segment       plural, kebab-case if multi-word            /users  /purchase-orders
+Endpoint key        matches the feature folder exactly          ENDPOINTS.purchaseOrders
+Query key           matches the feature folder exactly          queryKeys.purchaseOrders
+Permission key      matches the feature folder exactly          PERMISSIONS.purchaseOrders
+```
+
+**The consistency rule:** one entity, one word, everywhere. If the folder is `purchaseOrders`, then the type is `PurchaseOrder`, the file is `purchase-order.types.ts`, the component is `PurchaseOrdersPage`, the hook is `usePurchaseOrders`, the route is `/purchase-orders`, and the endpoint key is `purchaseOrders`. A reader who learns the name in one place must be able to predict it in all the others.
+
+**Name for the job, not the shape.** `UserTableWrapper` describes markup; `UserList` describes purpose. `DataThing` describes nothing; `InvoiceSummaryCard` describes exactly one thing.
+
+---
+
 ## ENVIRONMENT VARIABLES
 
 ### `.env.local` (never commit — local secrets only)
@@ -1443,6 +2389,13 @@ import apiClient from "../../lib/api/client";
 ✗  style={{}} inline styles — Tailwind only
 ✗  Capital letter folder names — all folders lowercase
 ✗  .txt files — components are .tsx, hooks/utils/types are .ts
+✗  Two structures living side by side after a migration — delete the old one
+✗  Meaningless names carried over from the source — rename to the domain
+✗  @ts-nocheck / @ts-ignore / `any` used to make migrated code compile
+✗  Source files, .env files, or private documents inside public/
+✗  A folder prefixed with its parent — public/public-logo/, components/components-ui/
+✗  Secrets behind NEXT_PUBLIC_, or a real secret in a committed .env file
+✗  Two CI systems, or a quality gate with continue-on-error: true
 ```
 
 ---
@@ -1464,6 +2417,36 @@ import apiClient from "../../lib/api/client";
 [ ] New type in lib/types/{domain}.types.ts
 [ ] New nav entry in lib/nav.ts
 [ ] TypeScript strict — no `any` without a comment
+[ ] Root defaults present: .env.example, .gitignore, .nvmrc, README.md, LICENSE
+[ ] CI workflow runs typecheck + lint + build, and is green
+[ ] No secret in a committed env file; no secret behind NEXT_PUBLIC_
+[ ] Assets under public/images|icons|fonts with kebab-case names, .webp photos
+[ ] app/ metadata files present: favicon.ico, error.tsx, not-found.tsx
+```
+
+### MIGRATION EXIT CRITERIA (MODE B only — all of the above, plus)
+
+```
+[ ] MIGRATION_PLAN.md written, every source file in the ledger exactly once
+[ ] MIGRATION_REPORT.md written and summarized in chat
+[ ] Legacy trees deleted — no src/, no pages/, no parallel old structure
+[ ] No file was merely moved: every migrated file obeys THE 3 LAWS
+[ ] No file name carried over that does not describe what the file does
+[ ] One entity = one word across folder, type, component, hook, route,
+    endpoint key, query key, permission key
+[ ] Every route from the old app resolves (or has a documented redirect)
+[ ] Every old API call reaches the same backend endpoint as before
+[ ] Every validation rule from the old code exists as a Zod rule
+[ ] Every role check from the old code exists in lib/permissions.ts
+[ ] localStorage/sessionStorage no longer holds tokens
+[ ] Forbidden dependencies removed from package.json + lockfile refreshed
+[ ] All Phase 9 gates run and clean — reported honestly, none disabled
+[ ] Old CI configs removed — exactly one CI system remains
+[ ] Every referenced asset moved into public/; unreferenced assets deleted
+[ ] REACT_APP_* / VITE_* vars renamed to NEXT_PUBLIC_* and in .env.example
+[ ] Any secret found in git history reported to the user for rotation
+[ ] README.md rewritten — it describes the new structure, not the old one
+[ ] Work is on refactor/project-structure with one commit per feature
 ```
 
 ---
