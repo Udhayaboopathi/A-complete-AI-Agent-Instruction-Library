@@ -363,7 +363,7 @@ services:
     restart: unless-stopped
     # Inside Docker: 0.0.0.0 is safe — the container network is internal
     # Traefik is the ONLY way in. No ports are published to the host.
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     env_file: ./backend/.env
     expose:
       - "8000"        # internal only — NOT published to host machine
@@ -449,7 +449,7 @@ services:
 
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     env_file: ./backend/.env
     expose:
       - "8000"
@@ -541,13 +541,13 @@ docker compose -f docker-compose.dev.yml up -d
 # Inside a Docker container, 0.0.0.0 is SAFE because:
 #   - The container has no published ports (uses "expose:" not "ports:")
 #   - Only Traefik can reach it via the internal Docker network
-# Command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Command: uvicorn main:app --host 0.0.0.0 --port 8000
 
 # ── Without Docker (bare metal / VM) ──────────────────────────────────
 # Bind to localhost only — Nginx/Traefik runs on the same machine
-# Command: uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Command: uvicorn main:app --host 127.0.0.1 --port 8000
 
-# NEVER: uvicorn app.main:app --host 0.0.0.0 on a bare metal server
+# NEVER: uvicorn main:app --host 0.0.0.0 on a bare metal server
 #        without a reverse proxy — exposes the backend directly to the internet
 ```
 
@@ -743,17 +743,17 @@ export class SigningInterceptor implements HttpInterceptor {
 
 ### Backend — Request Signature Verification
 
-#### FastAPI — `app/core/middleware/request_signing.py`
+#### FastAPI — `app/middleware/request_signing.py`
 
 ```python
-# app/core/middleware/request_signing.py
+# app/middleware/request_signing.py
 import hashlib
 import hmac
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from app.config import settings
+from app.core.config import settings
 
 # Paths that do NOT require signing (login must be exempt so the frontend
 # can get a session before signing is active)
@@ -811,14 +811,14 @@ class RequestSigningMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 ```
 
-Add to `app/core/middleware/__init__.py` registration:
+Add to `app/middleware/__init__.py` registration:
 
 ```python
 # Add to register_middleware() — AFTER RequestIDMiddleware, BEFORE RateLimitMiddleware
 app.add_middleware(RequestSigningMiddleware)    # ④ (shift existing numbers down)
 ```
 
-Add to `app/config.py`:
+Add to `app/core/config.py`:
 
 ```python
 REQUEST_SIGNING_SECRET: str   # must be set in .env — no default
@@ -845,7 +845,7 @@ database_url        connection_string
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from app.config import settings
+from app.core.config import settings
 
 
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -875,7 +875,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 ### Remove server identity from all responses
 
 ```python
-# app/core/middleware/security_headers.py — already in your file
+# app/middleware/security_headers.py — already in your file
 # ADD these two lines to the _HEADERS dict:
 
 "Server":       "",   # overwrite — prevents "uvicorn" from appearing
@@ -1049,11 +1049,11 @@ CORS must ONLY allow your known frontend origins. Never use `*` in production.
 ### FastAPI
 
 ```python
-# app/config.py
+# app/core/config.py
 BACKEND_CORS_ORIGINS: list[str] = []
 # .env: BACKEND_CORS_ORIGINS=["https://app.yourdomain.com","https://admin.yourdomain.com"]
 
-# app/core/middleware/__init__.py
+# app/middleware/__init__.py
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,   # NEVER ["*"] in production

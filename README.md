@@ -101,7 +101,7 @@ That's it. No drift. Same structure for every feature. 🔥
 ### 🗄️ Database (1)
 | File | Purpose |
 |------|---------|
-| 🐘 PostgreSQL | Schema management + auto-migration + `DB_Load.py` |
+| 🐘 PostgreSQL | Standalone DB project + reconcile engine (`db_deploy.py`) |
 
 </td>
 <td width="50%" valign="top">
@@ -137,10 +137,13 @@ A-complete-AI-Agent-Instruction-Library/
 │   └── FLUTTER_STRUCTURE.md          # Flutter multi-platform
 │
 ├── 📁 Database/
-│   └── DATABASE_STRUCTURE.md         # PostgreSQL + numbered SQL migrations
+│   └── DATABASE_STRUCTURE.md         # PostgreSQL project + inspect/diff/deploy engine
 │
 ├── 📁 Security/
 │   └── SECURITY_LAYER.md             # Traefik · HMAC · TLS · headers
+│
+├── 📁 Skill/
+│   └── FASTAPI_NEXTJS_STACK.md       # This stack: FastAPI + Next.js + DB + Security
 │
 ├── 📄 HOW_TO_USE.md                  # Complete usage guide
 └── 📄 README.md                      # You are here

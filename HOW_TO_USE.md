@@ -23,10 +23,13 @@ Frontend/
   FLUTTER_STRUCTURE.md          → Flutter multi-platform (Mobile + Desktop + Web)
 
 Database/
-  DATABASE_STRUCTURE.md         → PostgreSQL schema management
+  DATABASE_STRUCTURE.md         → Standalone PostgreSQL project + reconcile engine
 
 Security/
   SECURITY_LAYER.md             → Full-stack security (Traefik + HMAC + headers)
+
+Skill/
+  FASTAPI_NEXTJS_STACK.md       → Master prompt for FastAPI + Next.js + DB + Security
 ```
 
 ---
@@ -60,7 +63,7 @@ Full Python Stack : Django + React + Database + Security
 my-project/
 ├── backend/                   ← your backend code goes here
 ├── frontend/                  ← your frontend code goes here
-├── DataStructure/             ← database SQL files go here
+├── database/                  ← standalone DB project (schema + reconcile engine)
 │
 ├── FASTAPI_ORM_STRUCTURE.md   ← drop here (or whichever backend you chose)
 ├── NEXTJS_FRONTEND_STRUCTURE.md ← drop here (or whichever frontend)
@@ -89,6 +92,8 @@ Files to read:
 After reading, confirm you understand by summarizing the folder structure for each file in one sentence each. Then wait for my first task.
 ```
 
+**This stack (FastAPI + Next.js + Database + Security):** copy the master prompt from `Skill/FASTAPI_NEXTJS_STACK.md` instead. It includes file order and the cross-product stop rule.
+
 **Why ask for a confirmation summary?**
 It forces the agent to process all 4 files before generating any code. Without this, agents sometimes skip reading and default to their training data.
 
@@ -98,17 +103,16 @@ It forces the agent to process all 4 files before generating any code. Without t
 
 Follow this exact sequence when starting a new project:
 
-### Phase 1 — Database First
+### Phase 1 — Database First (its own project)
 
 ```
-1. Create DataStructure/ folder
-2. Write Tables/01_users.sql (use DATABASE_STRUCTURE.md as template)
-3. Write Tables/02_your_main_entity.sql
-4. Write Functions/01_update_timestamp.sql
-5. Write Triggers/01_users_updated_at.sql
-6. Write Indexing/01_users_indexes.sql
-7. Run: python DB_Load.py
-8. Verify schema.sql and schema.md were generated
+1. Create database/ from DATABASE_STRUCTURE.md
+2. Write schema/schemas/, schema/extensions/, schema/tables/{domain}/
+3. Write matching indexes/, functions/, triggers/, rls/
+4. Set DATABASE_URL in database/.env
+5. Run: python scripts/db_diff.py          # preview drift — no writes
+6. Run: python scripts/db_deploy.py        # inspect → apply → re-check → report
+7. Confirm STATUS: ✓ DATABASE IS IN SYNC and read CHANGES THIS RUN
 ```
 
 ### Phase 2 — Backend Second
@@ -117,12 +121,9 @@ Follow this exact sequence when starting a new project:
 1. Run: uvicorn / dotnet new / mvn spring-boot:run to init project
 2. Copy the relevant backend .md file to project root
 3. Prompt: "Set up the base project structure from FASTAPI_ORM_STRUCTURE.md"
-4. Agent generates: main.py, config.py, db/, core/, alembic/, requirements.txt
-5. Run: pip install -r requirements.txt
-6. Run: alembic init alembic
-7. Configure alembic/env.py (agent does this with the instruction file)
-8. Run: alembic revision --autogenerate -m "initial"
-9. Run: alembic upgrade head
+4. Agent generates: main.py, app/core/, app/modules/, app/api/, pyproject.toml
+5. Run: uv sync
+6. Map ORM models to the already-deployed database — the ORM never creates or alters tables
 ```
 
 ### Phase 3 — Security Third
@@ -155,19 +156,23 @@ Follow this exact sequence when starting a new project:
 
 ### Adding a New Feature (e.g., "Orders")
 
-Always follow this order — backend before frontend:
+Always follow this order — database first, then backend, then frontend:
 
 ```
-BACKEND:
+DATABASE:
   1. Prompt: "Add an Orders feature following DATABASE_STRUCTURE.md"
-     → Agent creates Tables/03_orders.sql + Indexing/ + Triggers/
-  2. Run: python DB_Load.py --file Tables/03_orders.sql
-  3. Prompt: "Add Orders to the backend following FASTAPI_ORM_STRUCTURE.md"
-     → Agent creates models/order.py, schemas/order.py, crud/order.py,
-       services/order.py, api/v1/endpoints/order.py, updates router.py
+     → Agent creates schema/tables/{domain}/orders.sql + indexes/ + triggers/ + rls/
+  2. Run: python scripts/db_diff.py
+  3. Run: python scripts/db_deploy.py
+     → Inspect live DB, apply missing columns/types/views, re-check once, print report
+
+BACKEND:
+  4. Prompt: "Add Orders to the backend following FASTAPI_ORM_STRUCTURE.md"
+     → Agent creates app/modules/orders/ (models, schemas, repository,
+       service, router, exceptions), exports the model, updates api/v1/router.py
 
 FRONTEND:
-  4. Prompt: "Add Orders to the frontend following NEXTJS_FRONTEND_STRUCTURE.md"
+  5. Prompt: "Add Orders to the frontend following NEXTJS_FRONTEND_STRUCTURE.md"
      → Agent creates lib/types/order.types.ts, lib/api/endpoints.ts updates,
        lib/query/keys.ts updates, components/pages/orders/ full feature folder
 ```
@@ -178,7 +183,7 @@ FRONTEND:
 Good prompts:
   "Add a [Feature] feature following all the instruction files."
   "Generate the [layer] for [feature] — follow the patterns exactly."
-  "Create a migration for adding [column] to [table] table."
+  "Add [column] to [table] in database/schema and deploy with db_deploy.py."
   "Fix the [file] — it's not following the rules in the instruction file."
 
 Bad prompts (too vague):
@@ -266,30 +271,32 @@ echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)"
 
 ### `DATABASE_STRUCTURE.md`
 
-**Purpose:** PostgreSQL schema management with numbered SQL files.
-**Use when:** Starting a project, adding tables, adding indexes, changing schema.
+**Purpose:** Standalone PostgreSQL project — desired schema + reconcile engine.
+**Use when:** Starting a project, adding tables, changing columns/types/views.
 **Key command:**
 
 ```bash
-python DB_Load.py              # full setup
-python DB_Load.py --dry-run    # preview
-python DB_Load.py --schema-only  # regenerate schema.sql + schema.md
+python scripts/db_diff.py      # inspect live DB, print plan — no writes
+python scripts/db_deploy.py    # inspect → apply → re-check once → report
+python scripts/db_check.py     # exit 0 only if already in sync
 ```
 
-**Folder to create:** `DataStructure/Tables/`, `Functions/`, `Triggers/`, `Indexing/`, `Views/`
+**Folder to create:** `database/schema/` (source of truth), `database/engine/`, `database/commands/`
+**Remember:** Push `database/` first. Backend models match the live schema after deploy.
 
 ---
 
 ### `FASTAPI_ORM_STRUCTURE.md`
 
-**Purpose:** Python FastAPI + SQLAlchemy async backend.
+**Purpose:** Python FastAPI + SQLAlchemy async backend (modular monolith).
 **Use when:** Building REST API with Python.
-**Key pattern:** `models/ → schemas/ → crud/ → services/ → api/endpoints/`
+**Key pattern:** `modules/{feature}/models → schemas → repository → service → router`
 **Remember:**
 
-- Run `alembic revision --autogenerate` after every model change
+- One package per feature under `app/modules/` — never a global `crud/` or `services/` tree
+- ORM **uses** the live DB only — never `create_all`, never Alembic; schema is `database/` + `db_deploy.py`
 - `settings.PRODUCTION=true` hides `/docs`
-- All middleware registered in `core/middleware/__init__.py`
+- All middleware registered in `app/middleware/__init__.py`
 
 ---
 
@@ -432,10 +439,11 @@ Before going live, verify all of these:
 
 ```
 Database:
-  [ ] All migrations applied: alembic upgrade head / flyway migrate / dotnet ef database update
-  [ ] Extensions installed by superuser (not app user)
-  [ ] audit_logs table exists
-  [ ] All indexes created (run Indexing/ files)
+  [ ] python scripts/db_deploy.py against production (migration role)
+  [ ] Report says STATUS: ✓ DATABASE IS IN SYNC
+  [ ] CHANGES THIS RUN reviewed — no unexpected drops
+  [ ] Extensions installed by superuser / migration role (not app user)
+  [ ] RLS enabled on tenant-owned tables
 
 Backend:
   [ ] PRODUCTION=true (FastAPI/Django) / ASPNETCORE_ENVIRONMENT=Production
@@ -494,7 +502,7 @@ services:
   # ── Backend ─────────────────────────────────────────────────────────
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     env_file: ./backend/.env
     expose: ["8000"]
     depends_on:
@@ -556,8 +564,8 @@ networks:
 2. ALWAYS set REQUEST_SIGNING_SECRET to the same value
    in backend .env AND frontend .env.local.
 
-3. ALWAYS run python DB_Load.py --schema-only after
-   any database change to keep schema.sql and schema.md in sync.
+3. ALWAYS deploy database/ first (db_diff then db_deploy).
+   Backend models change only after STATUS: ✓ DATABASE IS IN SYNC.
 ```
 
 ---
