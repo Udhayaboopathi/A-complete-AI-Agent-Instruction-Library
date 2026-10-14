@@ -13,48 +13,6 @@
 
 ---
 
-## OPERATING MODES
-
-Decide your mode **before writing a single line of code**, and state which mode you picked in your first reply.
-
-| What you find in the repository | Mode |
-|---|---|
-| Empty directory, or nothing but untouched `create-next-app` boilerplate | **MODE A — GREENFIELD** |
-| Any existing application source code, of any stack, any size, any quality | **MODE B — MIGRATION** |
-
-**MODE A — GREENFIELD**
-Scaffold the FOLDER STRUCTURE below exactly as written, wire the CODE BLUEPRINTS, then build each feature with the 12-step feature workflow.
-
-**MODE B — MIGRATION**
-Execute the **MIGRATION PROTOCOL** section in full, phase by phase, in order. Do not improvise your own order and do not skip phases.
-
-**The finish line is identical in both modes:** a repository that is indistinguishable from one built greenfield under this file. A reviewer must not be able to tell that MODE B ever happened — no leftovers, no orphan folders, no "legacy" corner, no file that survived only because moving it was easier than fixing it.
-
----
-
-## MODE B — THE PRIME DIRECTIVE
-
-**Renaming is not migrating. Moving is not migrating.**
-
-A migration is finished when every file in the tree could plausibly have been written from scratch against this document.
-
-| ❌ This is NOT a migration | ✅ This IS a migration |
-|---|---|
-| `mv src/components/UserTable.jsx components/pages/users/components/UserList.tsx` and stopping there | The 340-line `UserTable.jsx` is read, understood, and split into `UserList.tsx` (JSX), `useUsers.ts` (TanStack Query), `user.schema.ts` (Zod), `user.types.ts` (types), and a `ENDPOINTS.users` entry |
-| Keeping `utils.js` and renaming it `utils.ts` | Each function in it is routed to `lib/utils/format.ts`, `lib/utils/cn.ts`, a feature `constants.ts`, or deleted as dead code |
-| Leaving `fetch("/api/users")` inside a component because it "works" | The call moves to a hook, the URL moves to `ENDPOINTS`, the response goes through `normalizePaginated()` |
-| Adding `// @ts-nocheck` or `any` to make a moved file compile | Real types are written in `lib/types/{domain}.types.ts` and the file compiles under `strict: true` |
-| Creating the new tree and leaving the old `src/` beside it | The old tree is deleted; nothing imports from it because nothing needs it |
-| Renaming `Component1.tsx` to `Component1Card.tsx` | The component is read, its actual job is identified, and it is named for that job: `InvoiceSummaryCard.tsx` |
-
-**Behavior is preserved.** A migration changes structure, not product behavior. Every screen, route, form, and API call that worked before must work after. The only intentional behavior changes allowed are the ones this file mandates (centralized auth header, normalized errors, toast placement, role gating). If you find a genuine bug while migrating, do not silently fix it and do not silently keep it — list it in `MIGRATION_REPORT.md` under "Bugs found, not fixed" and ask.
-
-**Nothing is lost.** Every piece of business logic in the source — validation rule, permission check, formatting quirk, edge-case branch — must exist somewhere in the target. If you delete something, it is because it is provably dead, and it is listed in the report.
-
----
-
-## YOUR IDENTITY
-
 You are a senior Next.js frontend engineer.
 This app is a dashboard that connects to a REST API backend — **FastAPI**, **ASP.NET Core**, or **Spring Boot**. You do not care which one. You only speak HTTP.
 Follow every rule in this file for every file you generate.
