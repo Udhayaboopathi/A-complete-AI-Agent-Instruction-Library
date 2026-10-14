@@ -12,9 +12,9 @@
 ## YOUR SECURITY IDENTITY
 
 You are a security-first full-stack engineer.
-- Data NEVER travels as plain text — not in requests, not in responses
-- The backend IP/port is NEVER visible in browser developer tools
-- Every request is authenticated AND verified for integrity
+- Sensitive data is encrypted over every untrusted network; use TLS internally too when trust boundaries require it
+- The backend origin/port is not directly reachable from the public internet; the public proxy address is expected to be visible
+- Every protected request is authenticated and authorized; public health/login routes are narrowly scoped and rate-limited
 - Every response strips sensitive fields before leaving the server
 - All security is enforced at the infrastructure level — not left to individual developers
 
@@ -53,14 +53,14 @@ Threat 10: Oversized payloads    → attacker crashes server with huge request b
                        ▼
               ┌─────────────────┐
               │    Backend      │   ← FastAPI / ASP.NET / Spring Boot
-              │  127.0.0.1:8000 │   ← Bound to localhost — NOT 0.0.0.0
+              │ internal :8000  │   ← private network only; no public port
               └─────────────────┘
 ```
 
 **Why this matters:**
-- Browser developer tools show `api.domain.com` — never `1.2.3.4:8000`
+- Browser developer tools show the proxy origin, never a separately reachable backend origin/port
 - Backend server is invisible to the internet — it cannot be attacked directly
-- TLS is terminated at the proxy — backend handles plain HTTP internally (safe — localhost only)
+- TLS is terminated at the proxy; use a private network for the upstream hop or re-encrypt/mTLS when it crosses a trust boundary
 - If the proxy goes down, the backend is still unreachable from outside
 
 ---
@@ -105,14 +105,12 @@ server {
     server_tokens off;
     proxy_hide_header X-Powered-By;
     proxy_hide_header Server;
-    more_clear_headers Server;
 
     # Security headers
     add_header X-Frame-Options           "DENY"                              always;
     add_header X-Content-Type-Options    "nosniff"                           always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin"   always;
     add_header Permissions-Policy        "camera=(), microphone=(), geolocation=()" always;
-    add_header X-XSS-Protection          "1; mode=block"                     always;
 
     # Reject oversized request bodies before they hit the backend
     client_max_body_size 10m;
@@ -238,20 +236,6 @@ certificatesResolvers:
       httpChallenge:
         entryPoint: web
 
-# ── TLS options — modern only (no TLS 1.0 or 1.1) ─────────────────────
-tls:
-  options:
-    modern:
-      minVersion: VersionTLS12
-      cipherSuites:
-        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-      sniStrict: true
-
 # ── Providers — Docker labels + file-based dynamic config ──────────────
 providers:
   docker:
@@ -268,6 +252,12 @@ providers:
 
 ```yaml
 # traefik/dynamic.yml
+tls:
+  options:
+    modern:
+      minVersion: VersionTLS12
+      sniStrict: true
+
 http:
   middlewares:
 
@@ -278,8 +268,6 @@ http:
         frameDeny: true
         # Prevent MIME sniffing
         contentTypeNosniff: true
-        # XSS filter (legacy browsers)
-        browserXssFilter: true
         # HSTS — force HTTPS for 1 year
         forceSTSHeader:       true
         stsSeconds:           31536000
@@ -289,9 +277,8 @@ http:
         referrerPolicy: "strict-origin-when-cross-origin"
         # Permissions policy
         permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=()"
-        # Content Security Policy — single line (YAML > folds newlines to spaces, valid but unclear)
-        # Write as explicit single line to avoid YAML scalar confusion:
-        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self'; connect-src 'self' https://api.yourdomain.com; frame-ancestors 'none';"
+        # Generate CSP in the frontend with per-response nonces or hashes. Never
+        # use 'unsafe-eval'; do not add 'unsafe-inline' merely to make a build work.
         # Remove server identity headers
         customResponseHeaders:
           Server: ""
@@ -338,7 +325,7 @@ services:
 
   # ── Traefik — the only public entry point ────────────────────────────
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.7.15
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -350,7 +337,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only socket
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
-      - traefik-certs:/letsencrypt
+      - ./traefik/acme.json:/letsencrypt/acme.json
     networks:
       - proxy
     labels:
@@ -412,10 +399,6 @@ services:
       - "traefik.http.routers.frontend.middlewares=security-headers@file,compress@file"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
-volumes:
-  traefik-certs:
-    name: traefik-certs
-
 networks:
   proxy:
     name:   proxy
@@ -432,7 +415,7 @@ networks:
 services:
 
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.7.15
     command:
       - "--api.insecure=true"         # dev only — exposes dashboard at :8080
       - "--providers.docker=true"
@@ -530,6 +513,8 @@ docker compose -f docker-compose.dev.yml up -d
 ❌  TLS options omitted — always set to "modern"
 ```
 
+For higher-assurance production deployments, do not mount the Docker socket directly at all. Put a least-privilege Docker socket proxy in front of it (read-only access to only the endpoints Traefik needs), or use an orchestrator provider with scoped RBAC. A read-only socket can still expose highly sensitive Docker metadata and control surfaces.
+
 ---
 
 ## LAYER 2 — BACKEND BINDING (FastAPI / ASP.NET Core / Spring Boot)
@@ -576,253 +561,36 @@ server.port=8080
 
 ---
 
-## LAYER 3 — REQUEST SIGNING (HMAC-SHA256)
+## LAYER 3 — AUTHENTICATION, CSRF, AND OPTIONAL SERVER-TO-SERVER SIGNING
 
-Every API request carries a signature that proves it came from your app and has not been tampered with. This prevents request forgery and replay attacks.
+Never put a shared secret in browser JavaScript, a mobile binary, `NEXT_PUBLIC_*`, `VITE_*`, Angular environment files, or Flutter assets. Client-side HMAC does not prove that a request came from the genuine app because every user can extract the key.
 
-### How it works
+Use these controls instead:
 
-```
-Frontend signs every request:
-  signature = HMAC-SHA256( SIGNING_SECRET, timestamp + method + path + body )
+- Web with a BFF (recommended): browser receives an opaque `Secure; HttpOnly; SameSite=Lax` session cookie. The BFF stores or refreshes upstream tokens and calls the backend over a private network.
+- Pure SPA: keep the short-lived access token in memory; keep the rotating refresh token in a `Secure; HttpOnly; SameSite` cookie set by the API. Protect cookie-authenticated state changes with CSRF tokens and strict Origin/Referer validation.
+- Mobile/desktop: use OAuth 2.1 Authorization Code with PKCE through the system browser; store tokens only in platform secure storage.
+- Every backend: validate issuer, audience, signature, expiry, not-before, and authorization claims. Rate-limit authentication endpoints and rotate refresh tokens with reuse detection.
 
-Frontend sends headers:
-  X-Timestamp: 1720335600000     (Unix ms — expires in 5 min)
-  X-Signature: abc123def456...   (hex HMAC)
+### Optional HMAC — trusted server-to-server calls only
 
-Backend verifies:
-  1. Recompute the same HMAC
-  2. Compare — if different → reject 401
-  3. Check timestamp — if > 5 min old → reject 401 (replay attack blocked)
-```
-
-### ⚠️ Important Limitation — Signing Secret in Browser Apps
-
-`NEXT_PUBLIC_*` variables are bundled into the client-side JavaScript bundle. Anyone can open DevTools → Sources and read them. This means the signing secret is technically not secret to a determined attacker.
-
-**What request signing still protects against:**
-- Automated scripts and simple bots that don't inspect your JS bundle
-- Requests from tools like Postman/curl without the signing logic
-- Basic API enumeration attacks
-
-**What it does NOT protect against:**
-- A determined attacker who reads your JS bundle and extracts the secret
-
-**The correct solution for maximum security — Server-Side Signing Proxy:**
+Use HMAC only when both callers are trusted servers or for verified webhooks. Prefer mTLS or workload identity when the platform provides them. Canonicalize and sign all request components:
 
 ```
-Browser → Next.js API Route (server-side, secret never exposed) → Backend
+version + key_id + timestamp + nonce + method + normalized_path
++ canonical_query + SHA256(raw_body)
 ```
 
-For Next.js, requests from the browser go to a Next.js API route, which adds the signature server-side (where the secret is safe), then forwards to the backend. The signing secret lives only on the server — never in the browser bundle.
+The verifier MUST:
 
-For pure React/Angular SPAs without a server layer, client-side signing is "defense-in-depth" — not a cryptographic guarantee. Accept this trade-off knowingly.
+1. Select the key by `key_id` and support overlapping keys during rotation.
+2. Reject timestamps outside a short clock-skew window.
+3. atomically store the nonce in Redis or another shared TTL store and reject reuse.
+4. Include the canonical query string and raw-body hash; never sign decoded/re-serialized JSON.
+5. Compare MACs in constant time and return a generic authentication error.
+6. Run only on explicitly configured internal/webhook routes; never require HMAC from public browser or mobile clients.
 
----
-
-### Frontend — Universal signing utility (works in Next.js, React, Angular)
-
-```typescript
-// lib/api/signing.ts  (works in any TypeScript/JavaScript frontend)
-
-// Next.js: use a server-side env var (no NEXT_PUBLIC_ prefix) in API routes
-// React/Angular: this IS in the client bundle — see limitation note above
-const SIGNING_SECRET =
-  // Next.js server-side (API routes, Server Actions — secret is safe here)
-  process.env.REQUEST_SIGNING_SECRET
-  // Next.js client-side / React / Angular (in browser bundle — limited security)
-  ?? process.env.NEXT_PUBLIC_REQUEST_SIGNING_SECRET
-  ?? (typeof window !== "undefined"
-    ? (window as { __APP_CONFIG__?: { signingSecret?: string } }).__APP_CONFIG__?.signingSecret
-    : "")
-  ?? "";
-
-/**
- * Compute HMAC-SHA256 using the Web Crypto API (available in all modern browsers
- * and Node.js 18+, Next.js Edge Runtime, and any modern Angular/React build).
- * No external libraries required.
- */
-async function hmacSHA256(secret: string, message: string): Promise<string> {
-  const enc     = new TextEncoder();
-  const keyData = enc.encode(secret);
-  const msgData = enc.encode(message);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * Build the signing headers for a request.
- * Call this before every outgoing API request.
- */
-export async function buildSignatureHeaders(
-  method:  string,
-  path:    string,
-  body:    string = "",
-): Promise<Record<string, string>> {
-  const timestamp = Date.now().toString();
-  const message   = `${timestamp}${method.toUpperCase()}${path}${body}`;
-  const signature = await hmacSHA256(SIGNING_SECRET, message);
-
-  return {
-    "X-Timestamp": timestamp,
-    "X-Signature": signature,
-  };
-}
-```
-
-### Frontend — Axios interceptor integration
-
-```typescript
-// lib/api/client.ts  — add signing to the existing request interceptor
-
-import { buildSignatureHeaders } from "./signing";
-
-apiClient.interceptors.request.use(
-  async (config) => {
-    // 1. Attach auth token
-    const session = await getSession();
-    if (session?.accessToken) {
-      config.headers.Authorization = `Bearer ${session.accessToken}`;
-    }
-
-    // 2. Sign the request
-    const url    = config.url ?? "";
-    const method = config.method ?? "GET";
-    const body   = config.data ? JSON.stringify(config.data) : "";
-    const path   = url.startsWith("http") ? new URL(url).pathname : url;
-
-    const sigHeaders = await buildSignatureHeaders(method, path, body);
-    config.headers["X-Timestamp"] = sigHeaders["X-Timestamp"];
-    config.headers["X-Signature"] = sigHeaders["X-Signature"];
-
-    return config;
-  },
-  (err) => Promise.reject(err)
-);
-```
-
-### Angular — HTTP Interceptor (equivalent)
-
-```typescript
-// src/app/core/interceptors/signing.interceptor.ts  (Angular)
-import { Injectable } from "@angular/core";
-import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent } from "@angular/common/http";
-import { Observable, from, switchMap } from "rxjs";
-import { buildSignatureHeaders } from "../utils/signing";
-
-@Injectable()
-export class SigningInterceptor implements HttpInterceptor {
-  intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
-    const body = req.body ? JSON.stringify(req.body) : "";
-    const path = new URL(req.url).pathname;
-
-    return from(buildSignatureHeaders(req.method, path, body)).pipe(
-      switchMap((sigHeaders) => {
-        const signed = req.clone({
-          setHeaders: {
-            "X-Timestamp": sigHeaders["X-Timestamp"],
-            "X-Signature": sigHeaders["X-Signature"],
-          },
-        });
-        return next.handle(signed);
-      })
-    );
-  }
-}
-```
-
-### Backend — Request Signature Verification
-
-#### FastAPI — `app/middleware/request_signing.py`
-
-```python
-# app/middleware/request_signing.py
-import hashlib
-import hmac
-import time
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from app.core.config import settings
-
-# Paths that do NOT require signing (login must be exempt so the frontend
-# can get a session before signing is active)
-_EXEMPT_PATHS = frozenset({"/api/v1/auth/login", "/api/v1/auth/register", "/health", "/metrics"})
-_MAX_AGE_SECONDS = 300  # 5 minutes — blocks replay attacks
-
-
-class RequestSigningMiddleware(BaseHTTPMiddleware):
-    """
-    Validates X-Timestamp and X-Signature headers on every request.
-    Rejects requests that:
-      - Are missing the headers
-      - Have a timestamp older than 5 minutes (replay attack)
-      - Have an invalid HMAC signature (tampered or forged request)
-    """
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in _EXEMPT_PATHS:
-            return await call_next(request)
-
-        timestamp = request.headers.get("X-Timestamp")
-        signature = request.headers.get("X-Signature")
-
-        if not timestamp or not signature:
-            return JSONResponse(status_code=401, content={"detail": "Missing signature headers."})
-
-        # Replay attack prevention — reject requests older than 5 minutes
-        try:
-            ts = int(timestamp)
-            age = abs(time.time() - ts / 1000)
-            if age > _MAX_AGE_SECONDS:
-                return JSONResponse(status_code=401, content={"detail": "Request expired."})
-        except ValueError:
-            return JSONResponse(status_code=401, content={"detail": "Invalid timestamp."})
-
-        # Read body for signing (must be re-consumed via request.body())
-        body = await request.body()
-        body_str = body.decode("utf-8") if body else ""
-
-        # Recompute the expected signature
-        method  = request.method.upper()
-        path    = request.url.path
-        message = f"{timestamp}{method}{path}{body_str}"
-
-        expected = hmac.new(
-            settings.REQUEST_SIGNING_SECRET.encode(),
-            message.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-        # Constant-time comparison prevents timing attacks
-        if not hmac.compare_digest(expected, signature):
-            return JSONResponse(status_code=401, content={"detail": "Invalid request signature."})
-
-        return await call_next(request)
-```
-
-Add to `app/middleware/__init__.py` registration:
-
-```python
-# Add to register_middleware() — AFTER RequestIDMiddleware, BEFORE RateLimitMiddleware
-app.add_middleware(RequestSigningMiddleware)    # ④ (shift existing numbers down)
-```
-
-Add to `app/core/config.py`:
-
-```python
-REQUEST_SIGNING_SECRET: str   # must be set in .env — no default
-```
+TLS remains mandatory. HMAC is not encryption and does not replace user authentication, authorization, CSRF protection, or replay storage.
 
 ---
 
@@ -900,20 +668,18 @@ const res = await fetch("https://api.yourdomain.com/api/v1/users");
 ```
 
 This means:
-- `NEXT_PUBLIC_API_URL` = `https://api.yourdomain.com` (proxy URL)
-- `apiUrl` in Angular `environment.ts` = `https://api.yourdomain.com`
-- `REACT_APP_API_URL` in React `.env` = `https://api.yourdomain.com`
+- Next.js browser code calls same-origin `/api/backend`; only server-side `BACKEND_API_URL` points upstream.
+- Angular `environment.apiUrl` and React `VITE_API_URL` use the HTTPS proxy origin.
 
-### React (`create-react-app` / Vite) — HTTP client setup
+### React (Vite) — HTTP client setup
 
 ```typescript
 // src/api/client.ts  (React without Next.js)
 import axios from "axios";
-import { buildSignatureHeaders } from "./signing";
 import { tokenStore } from "./token-store";   // ← in-memory store, NOT localStorage
 
 const apiClient = axios.create({
-  baseURL:          process.env.REACT_APP_API_URL ?? import.meta.env.VITE_API_URL,
+  baseURL:          import.meta.env.VITE_API_URL,
   timeout:          15_000,
   withCredentials:  true,   // send httpOnly cookies with every request
   headers: {
@@ -922,15 +688,9 @@ const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use(async (config) => {
+apiClient.interceptors.request.use((config) => {
   const token = tokenStore.get();   // ← ALWAYS in-memory, NEVER localStorage
   if (token) config.headers.Authorization = `Bearer ${token}`;
-
-  const path   = config.url?.startsWith("http") ? new URL(config.url!).pathname : config.url ?? "";
-  const body   = config.data ? JSON.stringify(config.data) : "";
-  const sigHdr = await buildSignatureHeaders(config.method ?? "GET", path, body);
-  config.headers["X-Timestamp"] = sigHdr["X-Timestamp"];
-  config.headers["X-Signature"] = sigHdr["X-Signature"];
 
   return config;
 });
@@ -954,18 +714,16 @@ export default apiClient;
 export const environment = {
   production:         false,
   apiUrl:             "http://localhost:8080/api/v1",   // dev proxy
-  signingSecret:      "dev-signing-secret-change-in-prod",
 };
 
 // src/environments/environment.prod.ts  (production)
 export const environment = {
   production:         true,
   apiUrl:             "https://api.yourdomain.com/api/v1",  // proxy URL — never raw IP
-  signingSecret:      "",   // injected at build time — never hardcoded
 };
 ```
 
-### Angular — Auth + Signing interceptors
+### Angular — Auth interceptor
 
 ```typescript
 // src/app/core/interceptors/auth.interceptor.ts
@@ -989,36 +747,31 @@ export class AuthInterceptor implements HttpInterceptor {
 
 ## LAYER 6 — TOKEN SECURITY
 
-### Where to store tokens (most secure to least secure)
+### Where to store tokens
 
 ```
 1. httpOnly Cookie (most secure)
    → JavaScript CANNOT read it
    → Automatically sent with every request
    → Safe from XSS attacks
-   → Use with: next-auth v5, ASP.NET Core cookie auth
+   → Use with: Auth.js, ASP.NET Core cookie auth, or another server-managed session
 
 2. In-memory variable (second best)
    → Lost on page refresh
    → Safe from XSS (not in DOM or storage)
    → Use with: React/Angular SPA — store in module-level variable
 
-3. sessionStorage (acceptable)
-   → Cleared when tab closes
-   → Vulnerable to XSS — any script on the page can read it
-
-4. localStorage (avoid for tokens)
-   → Persists indefinitely
-   → Vulnerable to XSS
-   → Only use for non-sensitive preferences
+3. sessionStorage/localStorage (prohibited for credentials)
+   → Any successful XSS can read and exfiltrate the token
+   → Use storage only for non-sensitive preferences
 ```
 
-### Next.js — next-auth automatically uses httpOnly cookies ✅
+### Next.js — Auth.js uses HttpOnly cookies ✅
 
 ```typescript
 // lib/auth/config.ts — already in your file
-// session: { strategy: "jwt" }  ← next-auth stores the JWT in httpOnly cookie
-// The browser NEVER has direct access to the token via JavaScript
+// session: { strategy: "jwt" }  ← Auth.js stores an encrypted JWT in an HttpOnly cookie
+// Do not copy the upstream accessToken into the browser-visible session callback.
 ```
 
 ### React / Angular — In-memory token store
@@ -1059,7 +812,7 @@ app.add_middleware(
     allow_origins=settings.BACKEND_CORS_ORIGINS,   # NEVER ["*"] in production
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Timestamp", "X-Signature"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
     expose_headers=["X-Request-ID"],
     max_age=3600,
 )
@@ -1087,7 +840,7 @@ public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
     config.setAllowedOrigins(List.of("https://app.yourdomain.com"));
     config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-    config.setAllowedHeaders(List.of("Authorization","Content-Type","X-Timestamp","X-Signature","X-Request-ID"));
+    config.setAllowedHeaders(List.of("Authorization","Content-Type","X-CSRF-Token","X-Request-ID"));
     config.setAllowCredentials(true);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", config);
@@ -1109,7 +862,6 @@ X-Frame-Options                 DENY                                    Clickjac
 X-Content-Type-Options          nosniff                                 MIME sniffing
 Referrer-Policy                 strict-origin-when-cross-origin         Data leakage
 Permissions-Policy              camera=(), microphone=(), geolocation() Feature abuse
-X-XSS-Protection                1; mode=block                           Reflected XSS
 Content-Security-Policy         default-src 'self'; ...                 XSS injection
 Cache-Control                   no-store, no-cache                      Cached sensitive data
 ```
@@ -1137,7 +889,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 ALGORITHM=HS256
 
 # ── Security ──────────────────────────────────────────────────────────
-REQUEST_SIGNING_SECRET=generate-with-openssl-rand-hex-32   # must match frontend
+# Optional, trusted server-to-server/webhook signing only; never expose to clients:
+# INTERNAL_SIGNING_KEYS_JSON={"key-2026-10":"base64-secret"}
 BACKEND_CORS_ORIGINS=["https://app.yourdomain.com","https://admin.yourdomain.com"]
 ALLOWED_HOSTS=["api.yourdomain.com"]
 RATE_LIMIT_PER_MINUTE=60
@@ -1148,25 +901,21 @@ IP_BLOCKLIST=[]
 ### Frontend `.env.local` (Next.js)
 
 ```bash
-# Backend — proxy URL only — NEVER a raw IP
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api/v1
+# Browser calls the same-origin BFF only. This value is server-only.
+BACKEND_API_URL=http://backend:8000/api/v1
 
 # Backend type for response normalization
 NEXT_PUBLIC_BACKEND_TYPE=fastapi
 
-# next-auth
-NEXTAUTH_URL=https://app.yourdomain.com
-NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
-
-# Request signing — MUST match REQUEST_SIGNING_SECRET in backend .env
-NEXT_PUBLIC_REQUEST_SIGNING_SECRET=same-value-as-backend-signing-secret
+# Auth.js
+AUTH_URL=https://app.yourdomain.com
+AUTH_SECRET=generate-with-openssl-rand-base64-32
 ```
 
 ### React `.env`
 
 ```bash
-REACT_APP_API_URL=https://api.yourdomain.com/api/v1
-REACT_APP_SIGNING_SECRET=same-value-as-backend-signing-secret
+VITE_API_URL=https://api.yourdomain.com/api/v1
 ```
 
 ### Angular `environment.prod.ts`
@@ -1175,7 +924,6 @@ REACT_APP_SIGNING_SECRET=same-value-as-backend-signing-secret
 export const environment = {
   production:    true,
   apiUrl:        "https://api.yourdomain.com/api/v1",
-  signingSecret: "${SIGNING_SECRET}",   // injected by CI/CD at build time
 };
 ```
 
@@ -1208,11 +956,11 @@ Backend container IP:            10.x.x.x:8000        ← invisible, internal Do
 User submits form (any frontend: Next.js / React / Angular)
         │
         ▼
-  [Frontend] Axios/HttpClient interceptor runs:
-    ① Attach Authorization: Bearer {token}
-    ② Generate X-Timestamp = Date.now()
-    ③ Compute X-Signature = HMAC-SHA256(secret, timestamp+method+path+body)
-    ④ Set Content-Type: application/json
+  [Frontend] request layer runs:
+    ① Next.js: call same-origin BFF with an HttpOnly session cookie; or
+       SPA: attach a short-lived in-memory access token
+    ② For cookie-authenticated mutations, attach the CSRF token
+    ③ Set Content-Type: application/json
         │
         │  HTTPS (TLS 1.3) — encrypted in transit
         ▼
@@ -1229,15 +977,13 @@ User submits form (any frontend: Next.js / React / Angular)
     ⑪ TrustedHostMiddleware → valid Host header?
     ⑫ RequestIDMiddleware   → stamp X-Request-ID
     ⑬ RequestLoggingMiddleware → log request
-    ⑭ RequestSigningMiddleware →
-         - timestamp present? not expired (< 5 min)?
-         - recompute HMAC, compare_digest → reject 401 if no match
-    ⑮ RateLimitMiddleware   → per-IP sliding window
-    ⑯ IPBlocklistMiddleware → blocked IP?
+    ⑭ Authentication/CSRF validation → reject invalid or replayed credentials
+    ⑮ Distributed rate limiter → per account/IP policy
+    ⑯ IP reputation/block policy → blocked source?
     ⑰ SecurityHeadersMiddleware → add response headers
     ⑱ RequestSizeLimitMiddleware → body size check
     ⑲ CORSMiddleware        → allowed origin?
-    ⑳ Route Handler         → process request
+    ⑳ Route Handler         → authorize and process request
     ㉑ Response schema       → strips all sensitive fields
         │
         │  HTTPS (TLS 1.3) — response encrypted in transit
@@ -1271,15 +1017,15 @@ Infrastructure (Traefik):
 Request/Response Security:
   [ ] All API calls use HTTPS — zero plain HTTP in production
   [ ] HSTS header set (max-age=31536000) — forces HTTPS in browsers
-  [ ] Every request is signed with HMAC-SHA256 (X-Timestamp + X-Signature)
-  [ ] Backend verifies signature on every non-exempt endpoint
-  [ ] Timestamp check prevents replay attacks (> 5 min = reject)
+  [ ] Cookie-authenticated mutations enforce CSRF + Origin checks
+  [ ] Refresh tokens rotate and reuse is detected
+  [ ] Optional HMAC is limited to trusted server/webhook routes and uses nonce replay storage
   [ ] No sensitive fields (password, hashed_password, keys) in any API response
   [ ] No stack traces in production error responses
 
 Frontend:
   [ ] API URL is proxy domain — never raw IP or port
-  [ ] NEXT_PUBLIC_API_URL / REACT_APP_API_URL / environment.apiUrl = proxy URL
+  [ ] BACKEND_API_URL is server-only for Next.js; VITE_API_URL / environment.apiUrl use the proxy URL
   [ ] Tokens stored in httpOnly cookies (Next.js) or in-memory (React/Angular)
   [ ] No tokens in localStorage
   [ ] All security headers set in next.config.ts / index.html meta
@@ -1288,14 +1034,14 @@ Backend:
   [ ] CORS allow_origins = explicit list — never ["*"] in production
   [ ] Rate limiting active (nginx + backend)
   [ ] Input validation on every endpoint (Pydantic / Data Annotations / Bean Validation)
-  [ ] REQUEST_SIGNING_SECRET set and matches frontend signing secret
+  [ ] No shared signing secret exists in a browser bundle or mobile binary
   [ ] PRODUCTION=true disables /docs and /openapi.json (FastAPI)
 
 Secrets:
   [ ] .env never committed to git
   [ ] .env.example committed with empty values
   [ ] All secrets generated with: openssl rand -hex 32
-  [ ] REQUEST_SIGNING_SECRET is same value in backend .env and frontend .env
+  [ ] Server-to-server signing keys, when used, are stored only in a secret manager/server env
 ```
 
 ---
@@ -1310,11 +1056,10 @@ Secrets:
 ✗  Token stored in localStorage — use httpOnly cookies or in-memory
 ✗  Stack traces or server details in error responses (production)
 ✗  Secrets hardcoded in source files — always from env vars
-✗  Same signing secret across dev/staging/production environments
+✗  Any shared secret in browser JavaScript, public env variables, or mobile assets
 ✗  HTTP allowed in production — HTTPS only, redirect HTTP to HTTPS
 ✗  TLS 1.0 or 1.1 — TLS 1.2+ only
-✗  Skipping signature verification on any authenticated endpoint
-✗  X-Timestamp older than 5 minutes accepted — always check expiry
+✗  Treating HMAC as user authentication or requiring it from browser/mobile clients
 ✗  password / hashed_password in any Pydantic Read schema or API response
 ✗  server_tokens on in Nginx — always off
 ✗  /docs or /openapi.json enabled in production (FastAPI)
@@ -1324,13 +1069,13 @@ Secrets:
 
 *Applies to: Next.js · React · Angular (any frontend)*
 *Applies to: FastAPI · ASP.NET Core · Spring Boot (any backend)*
-*Security Stack: TLS 1.3 · HMAC-SHA256 signing · httpOnly cookies · Nginx reverse proxy · HSTS · CSP*
+*Security Stack: TLS 1.2/1.3 · HttpOnly sessions / OAuth 2.1 PKCE · CSRF protection · reverse proxy · HSTS · CSP · optional server-only HMAC*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

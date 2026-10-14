@@ -17,16 +17,16 @@ Backend/
   SPRINGBOOT_STRUCTURE.md       → Java Spring Boot backend
 
 Frontend/
-  NEXTJS_FRONTEND_STRUCTURE.md  → Next.js 15 frontend (SSR + App Router)
+  NEXTJS_FRONTEND_STRUCTURE.md  → Next.js 16.4 frontend (SSR + App Router)
   REACTJS_FRONTEND_STRUCTURE.md → React + Vite SPA frontend
-  ANGULARJS_FRONTEND_STRUCTURE.md → Angular 18+ frontend
+  ANGULARJS_FRONTEND_STRUCTURE.md → Angular 22 frontend
   FLUTTER_STRUCTURE.md          → Flutter multi-platform (Mobile + Desktop + Web)
 
 Database/
   DATABASE_STRUCTURE.md         → Standalone PostgreSQL project + reconcile engine
 
 Security/
-  SECURITY_LAYER.md             → Full-stack security (Traefik + HMAC + headers)
+  SECURITY_LAYER.md             → Full-stack security (Traefik + TLS + auth + headers)
 
 Skill/
   FASTAPI_NEXTJS_STACK.md       → Master prompt for FastAPI + Next.js + DB + Security
@@ -42,17 +42,17 @@ Choose one file from each category based on your project:
 | -------- | ---------------------------------------- | ---------------------------- |
 | Backend  | FastAPI · Django · ASP.NET · Spring Boot | Based on language preference |
 | Frontend | Next.js · React · Angular · Flutter      | Based on platform            |
-| Database | DATABASE_STRUCTURE.md                    | Always include this          |
+| Database | DATABASE_STRUCTURE.md                    | Include only when explicitly selected as the schema owner |
 | Security | SECURITY_LAYER.md                        | Always include this          |
 
 **Common combinations:**
 
 ```
-Web App (Python)  : FastAPI + Next.js + Database + Security
-Web App (Java)    : Spring Boot + Next.js + Database + Security
-Web App (C#)      : ASP.NET + Angular + Database + Security
-Mobile App        : FastAPI + Flutter + Database + Security
-Full Python Stack : Django + React + Database + Security
+Web App (Python)  : FastAPI + Next.js + standalone Database + Security
+Web App (Java)    : Spring Boot + Next.js + Flyway OR standalone Database + Security
+Web App (C#)      : ASP.NET + Angular + EF migrations OR standalone Database + Security
+Mobile App        : FastAPI + Flutter + standalone Database + Security
+Full Python Stack : Django + React + Django migrations + Security
 ```
 
 ---
@@ -63,16 +63,18 @@ Full Python Stack : Django + React + Database + Security
 my-project/
 ├── backend/                   ← your backend code goes here
 ├── frontend/                  ← your frontend code goes here
-├── database/                  ← standalone DB project (schema + reconcile engine)
+├── database/                  ← optional; only for standalone DB ownership
 │
 ├── FASTAPI_ORM_STRUCTURE.md   ← drop here (or whichever backend you chose)
 ├── NEXTJS_FRONTEND_STRUCTURE.md ← drop here (or whichever frontend)
-├── DATABASE_STRUCTURE.md      ← always drop here
+├── DATABASE_STRUCTURE.md      ← only when standalone DB ownership was selected
 ├── SECURITY_LAYER.md          ← always drop here
 └── HOW_TO_USE.md              ← this file
 ```
 
 Drop only the files you need. You don't need all 10 in one project.
+
+**Existing frontend:** choose the target frontend file and use its **Mode B — Total Frontend Migration**. The source may use any framework. The agent converts the implementation and structure but must preserve the existing UI design, colors, logos, visible text, fonts, theme, layout, responsive behavior, interactions, and animations unless you explicitly request a design change.
 
 ---
 
@@ -83,19 +85,19 @@ Replace the placeholders with your actual file names:
 ```
 Read the following files in my project root deeply and follow every instruction in all of them for all code you generate. These files are your single source of truth. No exceptions.
 
-Files to read:
+Files to read (omit the database file when backend-native migrations own the schema):
 - FASTAPI_ORM_STRUCTURE.md       (backend architecture + code patterns)
 - NEXTJS_FRONTEND_STRUCTURE.md   (frontend architecture + code patterns)
 - DATABASE_STRUCTURE.md          (database schema + SQL standards)
-- SECURITY_LAYER.md              (security layer — Traefik, HMAC, headers)
+- SECURITY_LAYER.md              (security layer — Traefik, TLS, auth, CSRF, headers)
 
-After reading, confirm you understand by summarizing the folder structure for each file in one sentence each. Then wait for my first task.
+After reading, summarize the applicable structure briefly, then continue with my current task. If I did not provide a task, ask for one concise task.
 ```
 
 **This stack (FastAPI + Next.js + Database + Security):** copy the master prompt from `Skill/FASTAPI_NEXTJS_STACK.md` instead. It includes file order and the cross-product stop rule.
 
-**Why ask for a confirmation summary?**
-It forces the agent to process all 4 files before generating any code. Without this, agents sometimes skip reading and default to their training data.
+**Why mention a confirmation summary?**
+It provides a quick check that the applicable files were processed. For a concrete coding request, keep it brief and continue working instead of pausing unnecessarily.
 
 ---
 
@@ -103,7 +105,7 @@ It forces the agent to process all 4 files before generating any code. Without t
 
 Follow this exact sequence when starting a new project:
 
-### Phase 1 — Database First (its own project)
+### Phase 1 — Database First (only in standalone database-owner mode)
 
 ```
 1. Create database/ from DATABASE_STRUCTURE.md
@@ -131,11 +133,10 @@ Follow this exact sequence when starting a new project:
 ```
 1. Set up Traefik using docker-compose.yml from SECURITY_LAYER.md
 2. Configure traefik/traefik.yml and traefik/dynamic.yml
-3. Add REQUEST_SIGNING_SECRET to .env (backend) and .env.local (frontend)
-4. Generate secret: openssl rand -hex 32
-5. Use SAME secret in both backend and frontend .env files
-6. Test: docker compose up -d
-7. Verify: curl -I https://api.localhost/health (check security headers)
+3. Configure HttpOnly session/refresh cookies, CSRF protection, strict CORS, and rate limits
+4. Keep every secret server-side; never put shared secrets in browser/mobile env files
+5. Test: docker compose up -d
+6. Verify: curl -I https://api.localhost/health (check TLS and security headers)
 ```
 
 ### Phase 4 — Frontend Last
@@ -144,9 +145,9 @@ Follow this exact sequence when starting a new project:
 1. Run: npx create-next-app / npm create vite / ng new / flutter create
 2. Copy the relevant frontend .md file to project root
 3. Prompt: "Set up the base project structure from NEXTJS_FRONTEND_STRUCTURE.md"
-4. Agent generates: lib/, components/, hooks/, middleware.ts, tsconfig.json
+4. Agent generates: lib/, components/, hooks/, proxy.ts, tsconfig.json
 5. Run: npm install
-6. Set NEXT_PUBLIC_API_URL in .env.local to Traefik proxy URL
+6. For Next.js set server-only BACKEND_API_URL; for SPA/mobile set the public proxy API URL
 7. Run: npm run dev
 ```
 
@@ -156,7 +157,7 @@ Follow this exact sequence when starting a new project:
 
 ### Adding a New Feature (e.g., "Orders")
 
-Always follow this order — database first, then backend, then frontend:
+In standalone database-owner mode, follow database → backend → frontend. In backend-native mode, create and apply the framework migration before code that depends on the new schema:
 
 ```
 DATABASE:
@@ -182,6 +183,8 @@ FRONTEND:
 ```
 Good prompts:
   "Add a [Feature] feature following all the instruction files."
+  "Convert this complete frontend to [Next.js / React / Angular / Flutter].
+   Use Mode B. Preserve the UI and product identity exactly."
   "Generate the [layer] for [feature] — follow the patterns exactly."
   "Add [column] to [table] in database/schema and deploy with db_deploy.py."
   "Fix the [file] — it's not following the rules in the instruction file."
@@ -219,7 +222,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 ALGORITHM=HS256
 
 # Security
-REQUEST_SIGNING_SECRET=            # openssl rand -hex 32  ← SAME VALUE AS FRONTEND
+# INTERNAL_SIGNING_KEYS_JSON=      # optional server-to-server/webhook keys only
 BACKEND_CORS_ORIGINS=["http://localhost:3000"]
 ALLOWED_HOSTS=["localhost","127.0.0.1"]
 
@@ -229,20 +232,16 @@ DJANGO_SECRET_KEY=                 # openssl rand -hex 32
 # (ASP.NET specific — use environment variables, NOT appsettings.json)
 ConnectionStrings__Default=Host=127.0.0.1;Database=myapp;Username=appuser;Password=pass
 Jwt__Secret=                       # same as JWT_SECRET above
-Security__SigningSecret=           # same as REQUEST_SIGNING_SECRET
-
-# (Spring Boot specific)
-APP_SIGNING_SECRET=                # same as REQUEST_SIGNING_SECRET
 ```
 
 ### Frontend `.env.local` (Next.js / React)
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1   # dev: backend URL
+BACKEND_API_URL=http://localhost:8000/api/v1        # Next.js server-only upstream
+VITE_API_URL=http://localhost:8000/api/v1           # React SPA only
 NEXT_PUBLIC_BACKEND_TYPE=fastapi                    # fastapi | aspnet | springboot
-NEXT_PUBLIC_REQUEST_SIGNING_SECRET=                 # SAME VALUE AS BACKEND
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=                                    # openssl rand -base64 32
+AUTH_URL=http://localhost:3000
+AUTH_SECRET=                                        # openssl rand -base64 32
 ```
 
 ### Flutter `.env`
@@ -250,7 +249,6 @@ NEXTAUTH_SECRET=                                    # openssl rand -base64 32
 ```bash
 API_URL=http://localhost:8000/api/v1
 BACKEND_TYPE=fastapi
-REQUEST_SIGNING_SECRET=                             # SAME VALUE AS BACKEND
 ENVIRONMENT=development
 ```
 
@@ -259,11 +257,10 @@ ENVIRONMENT=development
 ```bash
 echo "SECRET_KEY=$(openssl rand -hex 32)"
 echo "JWT_SECRET=$(openssl rand -hex 32)"
-echo "REQUEST_SIGNING_SECRET=$(openssl rand -hex 32)"
-echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)"
+echo "AUTH_SECRET=$(openssl rand -base64 32)"
 ```
 
-**CRITICAL:** `REQUEST_SIGNING_SECRET` must be the SAME value in backend `.env` and frontend `.env.local`.
+**CRITICAL:** never place a shared signing secret in a browser-exposed variable or Flutter asset. HMAC is optional and server-to-server only.
 
 ---
 
@@ -315,7 +312,7 @@ python scripts/db_check.py     # exit 0 only if already in sync
 
 ### `ASPNET_STRUCTURE.md`
 
-**Purpose:** C# ASP.NET Core 9 backend.
+**Purpose:** C# ASP.NET Core 10 LTS backend.
 **Use when:** Building REST API with .NET.
 **Key pattern:** `Models/ → DTOs/ → Repositories/ → Services/ → Controllers/`
 **Remember:**
@@ -328,7 +325,7 @@ python scripts/db_check.py     # exit 0 only if already in sync
 
 ### `SPRINGBOOT_STRUCTURE.md`
 
-**Purpose:** Java 21 Spring Boot backend.
+**Purpose:** Java 25 LTS + Spring Boot 4.1 backend.
 **Use when:** Building REST API with Java.
 **Key pattern:** `domain/ → dto/ → repository/ → service/ → controller/`
 **Remember:**
@@ -342,14 +339,14 @@ python scripts/db_check.py     # exit 0 only if already in sync
 
 ### `NEXTJS_FRONTEND_STRUCTURE.md`
 
-**Purpose:** Next.js 15 App Router frontend.
+**Purpose:** Next.js 16.4 App Router frontend.
 **Use when:** Building web app with SSR, SEO requirements.
 **Key pattern:** `app/page.tsx → components/pages/{feature}/ → lib/api/`
 **Remember:**
 
 - `page.tsx` = max 8 lines — one import, one return
 - Default = Server Component. `"use client"` only when needed
-- `middleware.ts` handles auth redirect at Edge (< 1ms)
+- `proxy.ts` handles request-time auth redirects
 
 ---
 
@@ -368,7 +365,7 @@ python scripts/db_check.py     # exit 0 only if already in sync
 
 ### `ANGULARJS_FRONTEND_STRUCTURE.md`
 
-**Purpose:** Angular 18+ standalone components frontend.
+**Purpose:** Angular 22 standalone components frontend.
 **Use when:** Enterprise Angular projects.
 **Key pattern:** `features/{feature}/ → UsersApiService → component class fields`
 **Remember:**
@@ -395,19 +392,27 @@ python scripts/db_check.py     # exit 0 only if already in sync
 
 ### `SECURITY_LAYER.md`
 
-**Purpose:** Full security layer — Traefik + HMAC + headers.
+**Purpose:** Full security layer — Traefik + TLS + secure auth/cookies + headers.
 **Use when:** Always. Every project.
 **Key pattern:** Browser → Traefik → Backend (backend IP never exposed)
 **Remember:**
 
 - `acme.json` must be `chmod 600`
-- `REQUEST_SIGNING_SECRET` must be identical in backend and frontend `.env`
+- Shared secrets stay server-side; browser/mobile clients use sessions, short-lived tokens, or OAuth PKCE
 - Backend binds to `0.0.0.0` inside Docker (safe — no published ports), `127.0.0.1` on bare metal
 - Auth routes (`/api/v1/auth/*`) get stricter rate limiting: 10 req/min
 
 ---
 
 ## STEP 8 — WHEN SOMETHING GOES WRONG
+
+Run the repository guard first:
+
+```bash
+python scripts/validate_library.py
+```
+
+It checks Markdown fences, required framework/security markers, and known stale or unsafe patterns before the instruction files are copied into another project.
 
 ### Agent ignores the instruction file
 
@@ -449,14 +454,14 @@ Backend:
   [ ] PRODUCTION=true (FastAPI/Django) / ASPNETCORE_ENVIRONMENT=Production
   [ ] /docs and /openapi.json disabled
   [ ] CORS origins set to real domain names (not localhost)
-  [ ] REQUEST_SIGNING_SECRET set (same as frontend)
+  [ ] No shared secret is exposed to browser/mobile code
   [ ] JWT secret is 32+ chars randomly generated
   [ ] Error responses show no stack traces
 
 Frontend:
-  [ ] NEXT_PUBLIC_API_URL points to https:// proxy URL (not raw IP)
+  [ ] Next.js BACKEND_API_URL is server-only; SPA/mobile API URLs point to the HTTPS proxy
   [ ] NEXT_PUBLIC_BACKEND_TYPE set correctly
-  [ ] REQUEST_SIGNING_SECRET matches backend
+  [ ] Access tokens are not persisted in localStorage/sessionStorage
   [ ] No console.log in production code
 
 Security (Traefik):
@@ -484,7 +489,7 @@ Here is what a complete `docker-compose.yml` looks like with all pieces wired to
 services:
   # ── Database ────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: changeme
@@ -532,13 +537,13 @@ services:
 
   # ── Traefik ──────────────────────────────────────────────────────────
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.7.15
     ports: ["80:80", "443:443"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
-      - traefik-certs:/letsencrypt
+      - ./traefik/acme.json:/letsencrypt/acme.json
     security_opt: [no-new-privileges:true]
     networks: [proxy]
     labels:
@@ -546,7 +551,6 @@ services:
 
 volumes:
   postgres-data:
-  traefik-certs:
 
 networks:
   proxy:
@@ -561,8 +565,8 @@ networks:
 1. ALWAYS start a chat by referencing the instruction files.
    The agent WILL drift without them.
 
-2. ALWAYS set REQUEST_SIGNING_SECRET to the same value
-   in backend .env AND frontend .env.local.
+2. NEVER place authentication or signing secrets in browser/mobile builds.
+   Use HttpOnly sessions, short-lived tokens, CSRF protection, or OAuth PKCE.
 
 3. ALWAYS deploy database/ first (db_diff then db_deploy).
    Backend models change only after STATUS: ✓ DATABASE IS IN SYNC.
@@ -577,7 +581,7 @@ _FastAPI · Django · ASP.NET Core · Spring Boot · Next.js · React · Angular
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

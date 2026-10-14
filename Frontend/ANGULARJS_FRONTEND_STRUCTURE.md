@@ -1,8 +1,11 @@
-# AGENT INSTRUCTIONS — Angular Frontend (v18+ Standalone)
+# AGENT INSTRUCTIONS — Angular Frontend (v22 Standalone)
 
 > **HOW TO USE THIS FILE**
 > Drop this file into your project root. When starting a new chat, say:
 > _"Read `ANGULARJS_FRONTEND_STRUCTURE.md` deeply and follow every instruction in it for all code you generate."_
+>
+> **To migrate an existing frontend of any kind:**
+> _"Read `ANGULARJS_FRONTEND_STRUCTURE.md` deeply. Convert the complete existing frontend to Angular using its migration contract. Preserve the existing UI and product identity exactly — do not redesign it."_
 > This file is the single source of truth. No exceptions.
 
 ---
@@ -12,26 +15,91 @@
 You are a senior Angular frontend engineer building enterprise-grade SPAs.
 This app connects to a REST API backend — FastAPI, ASP.NET Core, or Spring Boot.
 Every file you generate MUST follow the exact structure, patterns, and rules in this document.
-You have creative freedom only over feature UI and business logic — never over architecture.
+For a new build, you have creative freedom over requested feature UI and business logic. During migration, you have no creative freedom over existing presentation or behavior unless the user explicitly requests a change.
+
+---
+
+## OPERATING MODES
+
+### MODE A — NEW ANGULAR FRONTEND
+
+Use when no frontend exists. Build the requested product in the architecture below.
+
+### MODE B — TOTAL FRONTEND MIGRATION
+
+Use when any frontend already exists, including React, Next.js, Vue, Svelte, Nuxt, Remix, static HTML/CSS/JavaScript, legacy Angular/AngularJS, or another web framework.
+
+Convert the complete frontend to modern standalone Angular. Do not wrap the old application, leave active legacy islands, or stop after renaming files.
+
+---
+
+## MIGRATION PRIME DIRECTIVE — CHANGE THE FRAMEWORK, NOT THE PRODUCT
+
+The source frontend is the visual and behavioral specification. Unless the user explicitly requests a design or content change, preserve exactly:
+
+```text
+UI DESIGN       appearance, hierarchy, borders, shadows, radii
+COLORS          exact values, gradients, opacity, light/dark behavior
+BRANDING        logos, icons, illustrations, favicons, image crops and quality
+CONTENT         text, labels, headings, placeholders, messages
+TYPOGRAPHY      font files/families, weights, sizes, line height, letter spacing
+LAYOUT          dimensions, spacing, alignment, grids, overflow, z-index
+RESPONSIVENESS  breakpoints and mobile/tablet/desktop behavior
+MOTION          animations, transitions, timing, easing, hover effects
+INTERACTION     mouse, touch, keyboard, focus, scroll, modal, menu, form behavior
+THEME           theme tokens, names, persistence, system-theme behavior
+```
+
+Do not modernize, simplify, reword, recolor, restyle, replace assets, change fonts, or add/remove animation without explicit permission. Do not introduce placeholder content or a generic design system. Component boundaries and state architecture may change; the rendered product may not.
+
+If exact parity is blocked by a target limitation, stop before a material visible change and explain the smallest necessary deviation.
+
+**Mode B precedence:** this preservation directive overrides example copy, example component appearance, default loading/empty states, styling-library preferences, and optional UI recommendations elsewhere in this file. Folder boundaries, dependency direction, type safety, and standalone Angular architecture remain mandatory. Translate the existing presentation into that architecture without changing what the user sees.
+
+---
+
+## TOTAL CONVERSION CONTRACT
+
+A migration is complete only when every active route, screen, component, state, form, API call, permission, asset, style, responsive rule, and interaction has been converted and verified. The result must use standalone Angular and the structure in this file, pass build/typecheck/lint/tests, and have no active dependency on the source framework.
+
+Remove old code only after parity passes. Never treat “Angular builds” as proof that the migration is complete.
+
+---
+
+## PRESERVATION-FIRST MIGRATION WORKFLOW
+
+1. Inventory the source read-only: routes, layouts, components, state, forms, APIs, auth, dependencies, tests, build, styles, assets, fonts, themes, breakpoints, and animations.
+2. When runnable, capture baseline screenshots for important routes and states at mobile, tablet, and desktop sizes; record non-visual interactions separately.
+3. Create a source-to-target route and component map. Classify each artifact as `preserve`, `convert`, `framework-compatibility replacement`, or `proven unused`.
+4. Establish Angular providers, routing, API/auth infrastructure, and shared presentation primitives without changing their appearance.
+5. Migrate one complete route at a time, including its exact templates, styles, assets, states, interactions, data flow, and tests.
+6. Compare each migrated route against the baseline before unrelated cleanup.
+7. After all parity checks pass, remove the source framework, obsolete dependencies, duplicate artifacts, and temporary shims.
+8. Report what was migrated, what was preserved, verification results, and any approved deviations.
+
+Never delete a file because its name looks old. Prove it is unused through imports, routes, runtime references, build configuration, or asset usage.
 
 ---
 
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework      : Angular 18+          (standalone components — NO NgModules)
-Language       : TypeScript 5         (strict: true — always on)
+Framework      : Angular 22           (standalone components — NO NgModules)
+Language       : TypeScript 6.0       (strict: true — always on)
+Runtime        : Node.js 24.15+ LTS   (Angular 22 also supports 22.22.3+ and 26.x)
 Styling        : Tailwind CSS 4       + your own shared components
 HTTP Client    : Angular HttpClient   + functional interceptors
 State          : Angular Signals      (built-in — no NgRx for simple apps)
 Forms          : Angular Reactive Forms + Zod validation
-Validation     : Zod 3
+Validation     : Zod 4
 Server State   : TanStack Query v5 for Angular (@tanstack/angular-query-experimental)
 Auth           : JWT (in-memory — never localStorage)
 Icons          : lucide-angular
 Dates          : date-fns
-Build          : Angular CLI 18
+Build          : Angular CLI 22
 ```
+
+Before scaffolding, verify this baseline against Angular's official Node/TypeScript/RxJS compatibility table, select the latest patched mutually compatible releases, and commit the package-manager lockfile. Never use next/RC packages unless explicitly requested.
 
 ---
 
@@ -56,8 +124,7 @@ src/
 │   │   │   ├── token-store.ts               # In-memory token (never localStorage)
 │   │   │   └── auth.guard.ts                # CanActivateFn guard
 │   │   ├── interceptors/
-│   │   │   ├── auth.interceptor.ts          # Attach Bearer token
-│   │   │   ├── signing.interceptor.ts       # HMAC-SHA256 request signing
+│   │   │   ├── auth.interceptor.ts          # Attach short-lived Bearer token
 │   │   │   └── error.interceptor.ts         # Global 401/error handling
 │   │   ├── store/
 │   │   │   ├── ui.store.ts                  # Signal-based UI state
@@ -176,7 +243,6 @@ import {
 
 import { routes }              from "./app.routes";
 import { authInterceptor }     from "./core/interceptors/auth.interceptor";
-import { signingInterceptor }  from "./core/interceptors/signing.interceptor";
 import { errorInterceptor }    from "./core/interceptors/error.interceptor";
 
 export const appConfig: ApplicationConfig = {
@@ -187,8 +253,7 @@ export const appConfig: ApplicationConfig = {
       withFetch(),
       withInterceptors([
         authInterceptor,      // ① attach token
-        signingInterceptor,   // ② HMAC sign
-        errorInterceptor,     // ③ handle 401/errors
+        errorInterceptor,     // ② handle 401/errors
       ])
     ),
     provideTanStackQuery(new QueryClient({
@@ -342,42 +407,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 };
 ```
 
-```typescript
-// src/app/core/interceptors/signing.interceptor.ts
-import { HttpInterceptorFn } from "@angular/common/http";
-import { from, switchMap }   from "rxjs";
-import { environment }       from "../../../environments/environment";
-
-async function hmacSHA256(secret: string, message: string): Promise<string> {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export const signingInterceptor: HttpInterceptorFn = (req, next) => {
-  const secret = environment.signingSecret;
-  if (!secret) return next(req);
-
-  const timestamp = Date.now().toString();
-  const path      = new URL(req.url, "http://x").pathname;
-  const body      = req.body ? JSON.stringify(req.body) : "";
-  const message   = `${timestamp}${req.method.toUpperCase()}${path}${body}`;
-
-  return from(hmacSHA256(secret, message)).pipe(
-    switchMap((signature) =>
-      next(req.clone({
-        setHeaders: {
-          "X-Timestamp": timestamp,
-          "X-Signature": signature,
-        },
-      }))
-    )
-  );
-};
-```
+Do not add request-signing interceptors or secrets to Angular environment files. A browser cannot keep a shared secret. Use short-lived in-memory access tokens plus a rotating HttpOnly refresh cookie; set `withCredentials: true` only for the configured API origin and enforce CSRF protection on cookie-authenticated mutations.
 
 ---
 
@@ -515,7 +545,6 @@ export class UsersListComponent {
     onError: (err: Error) => toast.error(err.message),
   }));
 }
-```
 ```
 
 ---
@@ -680,7 +709,6 @@ export const environment = {
   production:    false,
   apiUrl:        "http://localhost:8000/api/v1",  // dev — goes through proxy
   backendType:   "fastapi" as const,
-  signingSecret: "dev-secret-change-in-prod",
 };
 
 // src/environments/environment.prod.ts  (production)
@@ -688,7 +716,6 @@ export const environment = {
   production:    true,
   apiUrl:        "https://api.yourdomain.com/api/v1",  // ALWAYS proxy URL — never raw IP
   backendType:   "fastapi" as const,
-  signingSecret: "",   // injected by CI/CD at build time
 };
 ```
 
@@ -850,6 +877,19 @@ STEP 9   Add navigation entry to core/store or layout/sidebar component
 [ ] All async HTTP calls use Observable (not Promise directly)
 ```
 
+### MODE B MIGRATION EXIT CRITERIA
+
+```text
+[ ] Every source route, state, interaction, and API call is mapped and converted
+[ ] UI design, colors, logos, text, fonts, theme, layout, and animation match source
+[ ] Responsive parity checked at representative mobile/tablet/desktop viewports
+[ ] Loading, empty, error, success, hover, focus, keyboard, and validation states checked
+[ ] Assets were preserved; anything removed was proven unused
+[ ] No active source-framework runtime, dependency, route, module, or compatibility island remains
+[ ] Build, typecheck, lint, available tests, and visual parity checks pass
+[ ] Every unavoidable difference is documented and approved
+```
+
 ---
 
 ## DATA FLOW
@@ -859,7 +899,7 @@ User submits form
   → UserFormComponent emits (formSubmit) event
   → Parent component calls createUser().mutate(payload)
   → authInterceptor injects Authorization: Bearer {token}
-  → signingInterceptor adds X-Timestamp + X-Signature
+  → authInterceptor adds a short-lived in-memory access token
   → backend responds → normalizeError on failure
   → onSuccess → invalidateQueries → list query re-runs
   → toast.success(...)
@@ -875,14 +915,14 @@ User navigates to /dashboard/users
 
 ---
 
-*Angular 18+ · TypeScript 5 · Standalone Components · Angular Signals · TanStack Query for Angular · Functional Interceptors · Zod · Tailwind CSS 4*
+*Stack baseline (verified 2026-10-14): Angular 22 · TypeScript 6.0 · Standalone Components · Angular Signals · TanStack Query for Angular · Functional Interceptors · Zod 4 · Tailwind CSS 4*
 *Works with: FastAPI · ASP.NET Core · Spring Boot*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

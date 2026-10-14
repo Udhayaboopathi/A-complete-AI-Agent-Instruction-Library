@@ -13,8 +13,8 @@ You are the stack orchestrator for **one** product built on this stack only:
 | --- | --- | --- |
 | Database | `Database/DATABASE_STRUCTURE.md` | Desired schema + inspect → diff → deploy |
 | Backend | `Backend/FASTAPI_ORM_STRUCTURE.md` | FastAPI modular monolith — ORM uses DB, never creates/alters it |
-| Frontend | `Frontend/NEXTJS_FRONTEND_STRUCTURE.md` | Next.js 15 App Router |
-| Security | `Security/SECURITY_LAYER.md` | Traefik, HMAC, TLS, headers |
+| Frontend | `Frontend/NEXTJS_FRONTEND_STRUCTURE.md` | Next.js 16.4 App Router |
+| Security | `Security/SECURITY_LAYER.md` | Traefik, TLS, auth, headers; optional server-to-server HMAC |
 
 Do not invent a fifth architecture. Do not switch to Django, ASP.NET, Spring Boot, React Vite, Angular, or Flutter unless the user explicitly changes stack.
 
@@ -40,9 +40,9 @@ After reading, confirm in four sentences:
 - database/ folder layout + deploy command
 - backend modules/ layout
 - frontend feature folder rule
-- security: Traefik in front, REQUEST_SIGNING_SECRET same on both sides
+- security: Traefik in front, HttpOnly/BFF auth, no client-side shared secret
 
-Then wait for my first task.
+Then continue with the current task. If no task was provided, ask for one concise task.
 
 If any change you are about to make would affect another product or another SaaS that shares this database, API, auth, or tenants — stop and tell me before you edit or deploy. Do not apply that change silently.
 ```
@@ -75,17 +75,18 @@ Start the chat with the master prompt above, or say:
 Use FASTAPI_NEXTJS_STACK. Follow the four layer files. Wait after you confirm.
 ```
 
-The agent must finish the four-sentence confirmation **before** writing code.
+The agent must internalize these constraints before writing code; do not repeat a confirmation when the user already supplied a concrete task unless they asked for it.
 
 ---
 
 ## HOW THE AGENT FOLLOWS THESE FILES
 
 1. **This file first** — stack, order, cross-product rule.
-2. **Then the layer file that owns the task.** A column change is `DATABASE_STRUCTURE.md`. A route is `FASTAPI_ORM_STRUCTURE.md`. A page is `NEXTJS_FRONTEND_STRUCTURE.md`. Headers, HMAC, Traefik is `SECURITY_LAYER.md`.
+2. **Then the layer file that owns the task.** A column change is `DATABASE_STRUCTURE.md`. A route is `FASTAPI_ORM_STRUCTURE.md`. A page is `NEXTJS_FRONTEND_STRUCTURE.md`. TLS, auth boundaries, headers, optional server-only signing, and Traefik are `SECURITY_LAYER.md`.
 3. **If two layers are involved, follow both.** Example: new table → database file, then backend `modules/{feature}/`, then frontend feature folder, then security if the route is public.
 4. **Never override a layer file** with training-data defaults (`app/crud/`, `DataStructure/`, `DB_Load.py`, Pages Router, `localStorage` tokens).
 5. **If a layer file and this file disagree,** the layer file wins on structure. This file wins on **order of work** and **cross-product stop**.
+6. **When an existing frontend is being converted,** use the frontend file's Mode B. Change the framework and internal architecture, but preserve the existing UI design, colors, branding, text, fonts, theme, layout, responsive behavior, interactions, and animations unless the user explicitly requests a visible change.
 
 ---
 
@@ -97,7 +98,7 @@ Always this sequence. Never backend-first. Never frontend-first.
 1. database/     edit schema/ → db_diff.py → db_deploy.py
                  STATUS must be: ✓ DATABASE IS IN SYNC
 2. backend/      modules match the live schema
-3. security      Traefik / HMAC / env secrets if the change is public
+3. security      Traefik / auth / CSRF / env secrets if the change is public
 4. frontend/     types, endpoints, feature UI
 ```
 
@@ -139,7 +140,7 @@ Affect means any of these:
 
 - shared table, column, type, view, function, RLS, or role
 - shared `/api/v1` contract (path, field, status code, auth)
-- shared JWT, `REQUEST_SIGNING_SECRET`, or tenant id
+- shared JWT trust, server-only signing key, or tenant id
 - shared Traefik host, CORS origin, or rate-limit rule
 - a migration or type change other apps still read as the old shape
 
@@ -167,20 +168,20 @@ If you are sure the change is isolated to this product, say so in one line and c
 [ ] Database deployed first when schema changed (diff → deploy → in sync)
 [ ] Backend is modules/{feature}/ — not crud/services leftovers
 [ ] Frontend change lives in the feature folder — page.tsx stays thin
-[ ] REQUEST_SIGNING_SECRET matches backend and frontend
+[ ] No backend token or shared secret is exposed to browser JavaScript
 [ ] Production: docs off, backend not published, security headers on
 [ ] If another product or SaaS could be affected — I stopped and told you
 ```
 
 ---
 
-_Stack: PostgreSQL 16 · FastAPI 0.115+ · Next.js 15 · Traefik · HMAC | Skill v1.0_
+_Stack baseline (verified 2026-10-14): PostgreSQL 18 · FastAPI 0.143+ · Next.js 16.4 · React 19.3 · Traefik 3.7 · Skill v1.1_
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author: Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

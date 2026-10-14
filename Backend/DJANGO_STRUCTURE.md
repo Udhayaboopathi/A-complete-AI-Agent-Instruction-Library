@@ -18,18 +18,24 @@ You have creative freedom only over business logic inside the defined boundaries
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework       : Django 5.x              + Django REST Framework 3.15
-Language        : Python 3.12
+Framework       : Django 6.1              + latest compatible Django REST Framework
+Language        : Python 3.15
 ORM             : Django ORM              (built-in)
-Database        : PostgreSQL 16
+Database        : PostgreSQL 18
 Migrations      : Django Migrations       (built-in)
-Auth            : djangorestframework-simplejwt 5.x
+Auth            : latest SimpleJWT release compatible with Django/DRF
 Validation      : DRF Serializers         (built-in)
 CORS            : django-cors-headers 4.x
-Filtering       : django-filter 24.x
-Settings split  : django-environ 0.11.x   (env vars)
-Testing         : pytest-django 4.x       + factory_boy
+Filtering       : django-filter 25.x
+Settings split  : django-environ 0.12.x   (env vars)
+Testing         : latest compatible pytest-django + factory_boy
 ```
+
+### Schema ownership gate
+
+Before scaffolding, verify this baseline against official release/support pages, select the latest stable security patch in the stated supported line, and commit the resolved lockfile. Never use pre-release packages unless explicitly requested.
+
+The default and recommended owner for a Django application is Django migrations, especially for auth, admin, sessions, content types, and third-party apps. Do not also run `Database/DATABASE_STRUCTURE.md` against those objects. If a separately governed schema is unavoidable, mark only those external domain models `managed = False`, map exact table/schema names, and keep Django framework tables under Django migrations. Exactly one owner per database object.
 
 ---
 
@@ -144,23 +150,52 @@ class BaseModel(models.Model):
 
 ```python
 # apps/users/models.py
+import uuid
+
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
-from apps.core.models import BaseModel
 
 
-class User(BaseModel):
+class UserManager(BaseUserManager):
+    use_in_migrations = True
+
+    def create_user(self, email: str, password: str | None = None, **extra_fields):
+        if not email:
+            raise ValueError("Email is required")
+        user = self.model(email=self.normalize_email(email), **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email: str, password: str, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
+        if not extra_fields["is_staff"] or not extra_fields["is_superuser"]:
+            raise ValueError("Superuser must have is_staff=True and is_superuser=True")
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN   = "admin",   "Admin"
         MANAGER = "manager", "Manager"
         STAFF   = "staff",   "Staff"
         VIEWER  = "viewer",  "Viewer"
 
-    email           = models.EmailField(max_length=255, unique=True, db_index=True)
-    hashed_password = models.CharField(max_length=255)
+    id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+    username        = None
+    email           = models.EmailField(max_length=255, unique=True)
     full_name       = models.CharField(max_length=255, blank=True, null=True)
     is_active       = models.BooleanField(default=True)
     role            = models.CharField(max_length=50, choices=Role.choices,
                                        default=Role.STAFF)
+
+    objects = UserManager()
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS: list[str] = []
 
     class Meta:
         db_table  = "users"
@@ -195,11 +230,11 @@ class Item(BaseModel):
 ```
 
 **Model Rules:**
-- ALWAYS inherit `BaseModel` — never define `id`/`created_at`/`updated_at` per-model
+- Every domain model inherits `BaseModel`. The authentication `User` is the one exception: it inherits `AbstractUser` and explicitly carries the shared UUID/timestamp fields.
 - ALWAYS set `db_table` explicitly — never use Django auto-naming
 - ALWAYS use `TextChoices` for enum fields — never bare strings
 - NEVER put business methods or query logic in models
-- NEVER use `CharField` for passwords — always `hashed_password` with hash in service
+- Never add a parallel `hashed_password` field. Use Django's built-in `password`, `set_password()`, and `check_password()` APIs.
 
 ---
 
@@ -274,8 +309,7 @@ class UserListResponseSerializer(serializers.ModelSerializer):
 
 ```python
 # apps/users/services.py
-from django.contrib.auth.hashers import make_password, check_password
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import AuthenticationFailed, NotFound, PermissionDenied
 
 from apps.users.models import User
 from apps.users.serializers import UserCreateSerializer, UserUpdateSerializer
@@ -290,11 +324,11 @@ def create_user(*, data: dict) -> User:
     serializer.is_valid(raise_exception=True)
 
     validated = serializer.validated_data
-    user = User.objects.create(
-        email           = validated["email"],
-        full_name       = validated.get("full_name"),
-        hashed_password = make_password(validated["password"]),
-        role            = validated.get("role", User.Role.STAFF),
+    user = User.objects.create_user(
+        email=validated["email"],
+        password=validated["password"],
+        full_name=validated.get("full_name"),
+        role=validated.get("role", User.Role.STAFF),
     )
     return user
 
@@ -321,7 +355,7 @@ def update_user(*, user_id: str, data: dict, requesting_user: User) -> User:
             setattr(user, field, validated[field])
 
     if "password" in validated:
-        user.hashed_password = make_password(validated["password"])
+        user.set_password(validated["password"])
 
     user.save()
     return user
@@ -332,19 +366,21 @@ def delete_user(*, user_id: str) -> None:
     user.delete()
 
 
-def authenticate_user(*, email: str, password: str) -> User | None:
+def authenticate_user(*, email: str, password: str) -> User:
     try:
         user = User.objects.get(email=email.lower(), is_active=True)
     except User.DoesNotExist:
-        return None
-    return user if check_password(password, user.hashed_password) else None
+        raise AuthenticationFailed("Invalid email or password.")
+    if not user.check_password(password):
+        raise AuthenticationFailed("Invalid email or password.")
+    return user
 ```
 
 **Service Rules:**
 - Services are ALWAYS plain functions — NEVER class-based
 - ALWAYS use keyword-only arguments (`*`) — prevents positional argument confusion
 - ALWAYS raise DRF exceptions (`NotFound`, `PermissionDenied`, `ValidationError`)
-- Password hashing ALWAYS in service — never in views or models
+- Password changes ALWAYS use `set_password()` / `create_user()` — never assign password hashes directly
 - Services NEVER return `None` to indicate failure — always raise
 
 ---
@@ -507,10 +543,15 @@ DEBUG      = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 INSTALLED_APPS = [
+    "django.contrib.admin",
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     # Project apps — always use full path
@@ -520,9 +561,13 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # MUST be first
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -534,6 +579,7 @@ DATABASES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "users.User"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -562,7 +608,16 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 ```
+
+### Canonical auth routes
+
+Implement `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, and `GET /api/v1/auth/me` with the same contract documented in the frontend files. Use a custom login serializer that calls `authenticate_user`, SimpleJWT rotation plus blacklist/reuse controls, and a `Secure; HttpOnly; SameSite=Lax` refresh cookie for browser clients. Do not expose a refresh token to browser JavaScript. Logout must blacklist/revoke the token family and clear the cookie.
 
 ```python
 # config/settings/production.py
@@ -637,12 +692,12 @@ CORS_ALLOWED_ORIGINS=https://app.yourdomain.com,https://admin.yourdomain.com
 
 ```text
 # requirements/base.txt
-Django>=5.0,<6.0
-djangorestframework>=3.15,<4.0
+Django>=6.1,<6.2
+djangorestframework>=3.16,<4.0
 djangorestframework-simplejwt>=5.3,<6.0
-django-cors-headers>=4.3,<5.0
-django-filter>=24.0,<25.0
-django-environ>=0.11,<1.0
+django-cors-headers>=4.9,<5.0
+django-filter>=25.2,<26.0
+django-environ>=0.12,<1.0
 psycopg[binary]>=3.1,<4.0
 ```
 
@@ -656,7 +711,7 @@ factory-boy>=3.3,<4.0
 ```text
 # requirements/production.txt
 -r base.txt
-gunicorn>=22.0,<23.0
+gunicorn>=23.0,<24.0
 ```
 
 ---
@@ -759,13 +814,13 @@ STEP 11  apps/{resource}/admin.py
 
 ---
 
-*Stack: Django 5.x · Python 3.12 · Django REST Framework · PostgreSQL · SimpleJWT · django-cors-headers · django-filter · pytest-django*
+*Stack baseline (verified 2026-10-14): Django 6.1 · Python 3.15 · Django REST Framework · PostgreSQL 18 · SimpleJWT · django-cors-headers · django-filter · pytest-django*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

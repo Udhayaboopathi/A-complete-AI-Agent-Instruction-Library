@@ -64,6 +64,12 @@ Drop the files into your project, reference them in your prompt, and the AI buil
 
 That's it. No drift. Same structure for every feature. 🔥
 
+### Version policy
+
+The baselines in this repository were verified on **2026-10-14**. For a new project, use the listed supported major/minor and resolve the latest stable security patch that is mutually compatible with the framework, runtime, plugins, and deployment platform. Commit lockfiles and use immutable container digests in production. Do not silently upgrade an existing project across a major version: read the official migration guide, run codemods where provided, and pass build, typecheck, lint, unit, integration, and end-to-end tests first.
+
+“Latest” never means beta, RC, nightly, `latest` container tags, or an unverified dependency mix. For long-lived products, a currently supported LTS may be better than the newest feature line; record that decision in the project.
+
 <div align="center">
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
 </div>
@@ -88,10 +94,12 @@ That's it. No drift. Same structure for every feature. 🔥
 ### 🎨 Frontends (4)
 | Stack | Platform |
 |-------|----------|
-| ▲ Next.js 15 | Web (SSR) |
+| ▲ Next.js 16.4 | Web (SSR) |
 | ⚛️ React + Vite | Web (SPA) |
-| 🔺 Angular 18+ | Web |
+| 🔺 Angular 22 | Web |
 | 💙 Flutter | Mobile · Desktop · Web |
+
+Every frontend instruction supports both **new builds** and **total migration from another frontend stack**. Migration changes the framework and architecture while preserving the existing design, colors, branding, text, fonts, theme, responsive behavior, and animations.
 
 </td>
 </tr>
@@ -109,7 +117,7 @@ That's it. No drift. Same structure for every feature. 🔥
 ### 🔐 Security (1)
 | Feature | Protection |
 |---------|-----------|
-| 🛡️ Traefik + HMAC | Hidden backend IP, request signing, HSTS/CSP |
+| 🛡️ Traefik + secure auth | TLS, HttpOnly/BFF or PKCE auth, CSRF, HSTS/CSP |
 
 </td>
 </tr>
@@ -127,23 +135,26 @@ A-complete-AI-Agent-Instruction-Library/
 ├── 📁 Backend/
 │   ├── FASTAPI_ORM_STRUCTURE.md      # Python · FastAPI + SQLAlchemy async
 │   ├── DJANGO_STRUCTURE.md           # Python · Django + DRF
-│   ├── ASPNET_STRUCTURE.md           # C# · ASP.NET Core 9 + EF Core
-│   └── SPRINGBOOT_STRUCTURE.md       # Java · Spring Boot 3 + JPA
+│   ├── ASPNET_STRUCTURE.md           # C# · ASP.NET Core 10 LTS + EF Core
+│   └── SPRINGBOOT_STRUCTURE.md       # Java · Spring Boot 4.1 + JPA
 │
 ├── 📁 Frontend/
-│   ├── NEXTJS_FRONTEND_STRUCTURE.md  # Next.js 15 App Router
-│   ├── REACTJS_FRONTEND_STRUCTURE.md # React 19 + Vite SPA
-│   ├── ANGULARJS_FRONTEND_STRUCTURE.md # Angular 18+ standalone
+│   ├── NEXTJS_FRONTEND_STRUCTURE.md  # Next.js 16.4 App Router
+│   ├── REACTJS_FRONTEND_STRUCTURE.md # React 19.3 + Vite 8 SPA
+│   ├── ANGULARJS_FRONTEND_STRUCTURE.md # Angular 22 standalone
 │   └── FLUTTER_STRUCTURE.md          # Flutter multi-platform
 │
 ├── 📁 Database/
 │   └── DATABASE_STRUCTURE.md         # PostgreSQL project + inspect/diff/deploy engine
 │
 ├── 📁 Security/
-│   └── SECURITY_LAYER.md             # Traefik · HMAC · TLS · headers
+│   └── SECURITY_LAYER.md             # Traefik · TLS · auth · CSRF · headers
 │
 ├── 📁 Skill/
 │   └── FASTAPI_NEXTJS_STACK.md       # This stack: FastAPI + Next.js + DB + Security
+│
+├── 📁 scripts/
+│   └── validate_library.py            # Deterministic library checks
 │
 ├── 📄 HOW_TO_USE.md                  # Complete usage guide
 └── 📄 README.md                      # You are here
@@ -211,6 +222,8 @@ Build in order: database → backend → frontend.
 | 💻 **Code Blueprints** | Copy-paste production-ready examples |
 | 🏷️ **Naming Conventions** | One consistent style across the whole codebase |
 | ➕ **Add-a-Feature Steps** | Numbered checklist for every new resource |
+| 🔄 **Full Frontend Migration** | Convert any existing frontend without redesigning it |
+| 🎨 **Visual Preservation Contract** | Keep UI, colors, branding, copy, fonts, theme, layout, and motion unchanged |
 | 🚫 **Absolute Prohibitions** | Hard rules the AI can never break |
 | ✅ **Pre-Completion Checklist** | Quality gate before the AI says "done" |
 
@@ -228,7 +241,7 @@ Build in order: database → backend → frontend.
 <br/>
 
 - ✅ **Backend IP hidden** — Traefik reverse proxy; browser only ever sees `api.yourdomain.com`
-- ✅ **Request signing** — HMAC-SHA256 on every request + 5-min replay protection
+- ✅ **Secret-safe clients** — no shared HMAC key in browser/mobile builds; optional signing is server-to-server with nonce replay protection
 - ✅ **No plain-text data** — HTTPS/TLS 1.3 everywhere, HSTS enforced
 - ✅ **Secure tokens** — httpOnly cookies / in-memory / encrypted storage — never `localStorage`
 - ✅ **Rate limiting** — global + stricter limits on auth endpoints

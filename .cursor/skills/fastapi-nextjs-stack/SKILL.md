@@ -20,7 +20,7 @@ Read [Skill/FASTAPI_NEXTJS_STACK.md](../../../Skill/FASTAPI_NEXTJS_STACK.md) fir
 4. `Frontend/NEXTJS_FRONTEND_STRUCTURE.md`
 5. `Security/SECURITY_LAYER.md`
 
-Confirm in four sentences (database deploy, backend modules, frontend feature folder, signing secret), then wait.
+Confirm in four sentences (database deploy, backend modules, frontend feature folder, and secret-safe BFF/auth boundary), then continue with the user's task. Never expose backend tokens or shared signing keys to browser code.
 
 ## Work order
 

@@ -21,16 +21,21 @@ You have no creative freedom over folder layout, apply order, or the deployment 
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Database        : PostgreSQL 16+
-Language        : Python 3.12
+Database        : PostgreSQL 18
+Language        : Python 3.15
 Driver          : psycopg 3 (psycopg[binary])
 Config          : PyYAML + python-dotenv
 Package manager : uv  (pyproject.toml)
 ```
 
-The backend (FastAPI / Django / ASP.NET / Spring Boot) is a **consumer** of this schema.
-Do not let Alembic, Flyway, or EF Core become the schema source of truth when this project exists.
-Push and deploy `database/` first. Then update backend models to match.
+Before scaffolding, verify this baseline against official PostgreSQL/Python support pages, select the latest stable security patch in the stated supported line, commit `uv.lock`, and pin production images by digest. Never use beta/RC database releases for production unless explicitly requested.
+
+Use this project only after explicitly selecting **standalone database ownership**. Exactly one system may own application DDL:
+
+- Standalone database ownership: this project owns all application tables, indexes, functions, policies, and migrations; backend migration tools are disabled for those objects.
+- Backend-native ownership: Alembic, Django migrations, EF Core, or Flyway owns DDL; do not add or run this reconciliation project against the same objects.
+
+Never run two schema owners against the same schema. When this project is selected, the backend is a consumer: deploy `database/` first, then update backend mappings. Django's own framework tables require special care; prefer Django-native migrations unless the team deliberately maintains those tables here too.
 
 ---
 
@@ -1018,8 +1023,9 @@ from reports.console import print_header, print_step, render_changes, render_fin
 from reports.models import Change
 
 
-def run() -> int:
+def run(*, allow_destructive_cli: bool = False) -> int:
     cfg = env_config()
+    destructive_enabled = bool(cfg.get("allow_destructive", False)) and allow_destructive_cli
     started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     print_header(
         environment=cfg["environment"],
@@ -1048,11 +1054,11 @@ def run() -> int:
         print("\nApplying changes...\n")
         try:
             with atomic(conn):
-                applied = apply_changes(conn, plan(changes, allow_destructive=cfg.get("allow_destructive", False)))
+                applied = apply_changes(conn, plan(changes, allow_destructive=destructive_enabled))
                 remaining = recheck(conn, desired)
                 if remaining:
                     applied.extend(
-                        apply_changes(conn, plan(remaining, allow_destructive=cfg.get("allow_destructive", False)))
+                        apply_changes(conn, plan(remaining, allow_destructive=destructive_enabled))
                     )
                     remaining = recheck(conn, desired)
                 if remaining:
@@ -1094,13 +1100,20 @@ if __name__ == "__main__":
 
 ```python
 # scripts/db_deploy.py
+import argparse
+
 from commands.deploy import run
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--allow-destructive", action="store_true")
+    args = parser.parse_args()
+    raise SystemExit(run(allow_destructive_cli=args.allow_destructive))
 ```
 
 Every file in `scripts/` is a thin wrapper. Logic lives in `commands/` + `engine/`.
+
+The executor must persist the exact executed SQL and checksums in a database audit table inside the same transaction. After commit, write the immutable `migrations/` artifact from that audit record. If artifact creation fails, exit non-zero and report the audit ID; never pretend the migration history is complete.
 
 ---
 
@@ -1222,7 +1235,7 @@ UUID ↔ integer identity changes
 ```
 
 In production, `allow_destructive` MUST stay `false`.
-Skipped destructive items are printed, not applied, and do **not** fail the run unless they block a safe change.
+Skipped destructive items are printed, not applied, remain drift, and cause a non-zero exit with `STATUS: ✗ DATABASE NOT IN SYNC (DESTRUCTIVE APPROVAL REQUIRED)`. Never print the green in-sync status while any desired/current drift remains.
 
 ---
 
@@ -1353,13 +1366,13 @@ Never push backend schema changes that are not already in schema/ and deployed.
 
 ---
 
-_Stack: PostgreSQL 16 · Python 3.12 · psycopg 3 · PyYAML · python-dotenv · uv | v3.0_
+_Stack baseline (verified 2026-10-14): PostgreSQL 18 · Python 3.15 · psycopg 3 · PyYAML · python-dotenv · uv | v3.1_
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author: Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

@@ -3,6 +3,9 @@
 > **HOW TO USE THIS FILE**
 > Drop this file into your project root. When starting a new chat, say:
 > _"Read `REACTJS_FRONTEND_STRUCTURE.md` deeply and follow every instruction in it for all code you generate."_
+>
+> **To migrate an existing frontend of any kind:**
+> _"Read `REACTJS_FRONTEND_STRUCTURE.md` deeply. Convert the complete existing frontend to React + Vite using its migration contract. Preserve the existing UI and product identity exactly — do not redesign it."_
 > This file is the single source of truth. No exceptions.
 
 ---
@@ -12,22 +15,86 @@
 You are a senior React frontend engineer building enterprise-grade SPAs with Vite.
 This app connects to a REST API backend — FastAPI, ASP.NET Core, or Spring Boot.
 Every file you generate MUST follow the exact structure, patterns, and rules in this document.
-You have creative freedom only over feature UI and business logic — never over architecture.
+For a new build, you have creative freedom over requested feature UI and business logic. During migration, you have no creative freedom over existing presentation or behavior unless the user explicitly requests a change.
+
+---
+
+## OPERATING MODES
+
+### MODE A — NEW REACT FRONTEND
+
+Use when no frontend exists. Build the requested product in the architecture below.
+
+### MODE B — TOTAL FRONTEND MIGRATION
+
+Use when any frontend already exists, including Next.js, Vue, Angular, Svelte, Nuxt, Remix, Gatsby, static HTML/CSS/JavaScript, legacy React, or another web framework.
+
+Convert the complete frontend to React + Vite. Do not embed the old application, leave active legacy islands, or stop after reorganizing filenames.
+
+---
+
+## MIGRATION PRIME DIRECTIVE — CHANGE THE FRAMEWORK, NOT THE PRODUCT
+
+The source frontend is the visual and behavioral specification. Unless the user explicitly requests a design or content change, preserve exactly:
+
+```text
+UI DESIGN       appearance, hierarchy, borders, shadows, radii
+COLORS          exact values, gradients, opacity, light/dark behavior
+BRANDING        logos, icons, illustrations, favicons, image crops and quality
+CONTENT         text, labels, headings, placeholders, messages
+TYPOGRAPHY      font files/families, weights, sizes, line height, letter spacing
+LAYOUT          dimensions, spacing, alignment, grids, overflow, z-index
+RESPONSIVENESS  breakpoints and mobile/tablet/desktop behavior
+MOTION          animations, transitions, timing, easing, hover effects
+INTERACTION     mouse, touch, keyboard, focus, scroll, modal, menu, form behavior
+THEME           theme tokens, names, persistence, system-theme behavior
+```
+
+Before scaffolding, verify this baseline against official release/support pages, select the latest patched mutually compatible releases, and commit the package-manager lockfile. Never use beta/RC packages unless explicitly requested.
+
+Do not modernize, simplify, reword, recolor, restyle, replace assets, change fonts, or add/remove animation without explicit permission. Do not introduce placeholder content or a generic design system. Internal architecture must improve; visible product identity must not change.
+
+If exact parity is blocked by a target limitation, stop before a material visible change and explain the smallest necessary deviation.
+
+**Mode B precedence:** this preservation directive overrides example copy, example component appearance, default loading/empty states, styling-library preferences, and optional UI recommendations elsewhere in this file. Folder boundaries, dependency direction, type safety, and React architecture remain mandatory. Translate the existing presentation into that architecture without changing what the user sees.
+
+---
+
+## TOTAL CONVERSION CONTRACT
+
+A migration is complete only when every active route, screen, component, state, form, API call, permission, asset, style, responsive rule, and interaction has been converted and verified. The result must use the structure in this file, pass build/typecheck/lint/tests, and have no active dependency on the source framework.
+
+Remove old code only after parity passes. Never treat “the new app builds” as proof that the migration is complete.
+
+---
+
+## PRESERVATION-FIRST MIGRATION WORKFLOW
+
+1. Inventory the source read-only: routes, layouts, components, state, forms, APIs, auth, dependencies, tests, build, styles, assets, fonts, themes, breakpoints, and animations.
+2. When runnable, capture baseline screenshots for important routes and states at mobile, tablet, and desktop sizes; record non-visual interactions separately.
+3. Create a source-to-target route and component map. Classify each artifact as `preserve`, `convert`, `framework-compatibility replacement`, or `proven unused`.
+4. Establish React infrastructure, then migrate one complete route at a time, including its exact styles, assets, states, interactions, data flow, and tests.
+5. Compare each migrated route against the baseline before unrelated cleanup.
+6. After all parity checks pass, remove the source framework, obsolete dependencies, duplicate artifacts, and temporary shims.
+7. Report what was migrated, what was preserved, verification results, and any approved deviations.
+
+Never delete a file because its name looks old. Prove it is unused through imports, routes, runtime references, build configuration, or asset usage.
 
 ---
 
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Build Tool     : Vite 6              (not CRA — never Create React App)
-Framework      : React 19            (functional components + hooks only)
-Language       : TypeScript 5        (strict: true — always on)
-Routing        : React Router v6     (createBrowserRouter + Outlet)
+Build Tool     : Vite 8              (not CRA — never Create React App)
+Framework      : React 19.3          (functional components + hooks only)
+Language       : TypeScript 6        (strict: true — always on)
+Runtime        : Node.js 24 LTS      (pin exact patch in version file / CI)
+Routing        : React Router v8     (createBrowserRouter + Outlet)
 Styling        : Tailwind CSS 4      + your own ui/ primitives
 Server State   : TanStack Query v5   (all API data lives here)
 Client State   : Zustand 5           (UI-only state)
 Forms          : React Hook Form 7   + Zod resolver
-Validation     : Zod 3
+Validation     : Zod 4
 HTTP Client    : Axios 1.x           (one instance, one file)
 Auth           : JWT (in-memory store — never localStorage)
 Icons          : lucide-react
@@ -336,14 +403,34 @@ apiClient.interceptors.request.use(
   (err) => Promise.reject(err)
 );
 
-// Global error handling — never handle 401 in a component
+// Global error handling + a single-flight refresh using the HttpOnly refresh cookie.
+let refreshPromise: Promise<string> | null = null;
+
 apiClient.interceptors.response.use(
   (res) => res,
-  (err: AxiosError) => {
-    if (err.response?.status === 401) {
-      tokenStore.clear();
-      window.location.href = "/login";
-      return Promise.reject(err);
+  async (err: AxiosError) => {
+    const original = err.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const isAuthRoute = original?.url?.includes("/auth/") ?? false;
+    if (err.response?.status === 401 && original && !original._retry && !isAuthRoute) {
+      original._retry = true;
+      refreshPromise ??= axios.post(
+        `${import.meta.env.VITE_API_URL}/auth/refresh`,
+        undefined,
+        { withCredentials: true },
+      ).then(({ data }) => {
+        const token = data.access_token ?? data.accessToken ?? data.token;
+        if (!token) throw new Error("Refresh returned no access token");
+        tokenStore.set(token);
+        return token;
+      }).finally(() => { refreshPromise = null; });
+
+      try {
+        original.headers.Authorization = `Bearer ${await refreshPromise}`;
+        return apiClient(original);
+      } catch {
+        tokenStore.clear();
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(new Error(normalizeError(err.response?.data)));
   }
@@ -359,20 +446,15 @@ export default apiClient;
 ```typescript
 // src/lib/auth/token-store.ts
 // Token lives in memory ONLY — never written to localStorage or sessionStorage.
-// Lost on page refresh — user must log in again (acceptable for security).
-// For "remember me": use httpOnly cookies on the backend instead.
+// Access token is lost on refresh. Bootstrap the app by calling /auth/refresh;
+// the rotating refresh token is a Secure HttpOnly cookie and is never readable here.
 
-let _accessToken:  string | null = null;
-let _refreshToken: string | null = null;
+let _accessToken: string | null = null;
 
 export const tokenStore = {
-  get:          ()              => _accessToken,
-  getRefresh:   ()              => _refreshToken,
-  set:          (access: string, refresh?: string) => {
-    _accessToken  = access;
-    if (refresh) _refreshToken = refresh;
-  },
-  clear:        () => { _accessToken = null; _refreshToken = null; },
+  get:          ()                 => _accessToken,
+  set:          (access: string)   => { _accessToken = access; },
+  clear:        ()                 => { _accessToken = null; },
   isLoggedIn:   () => _accessToken !== null,
 };
 ```
@@ -405,10 +487,26 @@ export const authService = {
     useAuthStore.getState().setUser(user);
   },
 
-  logout(): void {
-    tokenStore.clear();
-    useAuthStore.getState().clearUser();
-    window.location.href = "/login";
+  async refresh(): Promise<boolean> {
+    try {
+      const { data } = await apiClient.post<TokenData>(ENDPOINTS.auth.refresh);
+      const token = data.access_token ?? data.accessToken ?? data.token;
+      if (!token) return false;
+      tokenStore.set(token);
+      return true;
+    } catch {
+      tokenStore.clear();
+      return false;
+    }
+  },
+
+  async logout(): Promise<void> {
+    try { await apiClient.post(ENDPOINTS.auth.logout); }
+    finally {
+      tokenStore.clear();
+      useAuthStore.getState().clearUser();
+      window.location.href = "/login";
+    }
   },
 };
 ```
@@ -836,6 +934,19 @@ STEP 12  src/lib/permissions.ts (if role-gated)
 [ ] Token handled by tokenStore — never localStorage
 ```
 
+### MODE B MIGRATION EXIT CRITERIA
+
+```text
+[ ] Every source route, state, interaction, and API call is mapped and converted
+[ ] UI design, colors, logos, text, fonts, theme, layout, and animation match source
+[ ] Responsive parity checked at representative mobile/tablet/desktop viewports
+[ ] Loading, empty, error, success, hover, focus, keyboard, and validation states checked
+[ ] Assets were preserved; anything removed was proven unused
+[ ] No active source-framework runtime, dependency, route, or compatibility island remains
+[ ] Build, typecheck, lint, available tests, and visual parity checks pass
+[ ] Every unavoidable difference is documented and approved
+```
+
 ---
 
 ## DATA FLOW
@@ -858,14 +969,14 @@ User navigates to /{feature}
 
 ---
 
-*Vite 6 · React 19 · TypeScript 5 · React Router v6 · TanStack Query v5 · Zustand 5 · Zod 3 · React Hook Form 7 · Tailwind CSS 4*
+*Stack baseline (verified 2026-10-14): Vite 8 · React 19.3 · TypeScript 6 · React Router 8 · TanStack Query 5 · Zustand 5 · Zod 4 · React Hook Form 7 · Tailwind CSS 4*
 *Works with: FastAPI · ASP.NET Core · Spring Boot*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

@@ -18,10 +18,10 @@ You have creative freedom only over business logic inside the defined boundaries
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework       : ASP.NET Core 9          (Minimal API + Controllers)
-Language        : C# 13                   (records, pattern matching, nullable refs)
-ORM             : Entity Framework Core 9
-Database        : PostgreSQL 16
+Framework       : ASP.NET Core 10 LTS     (Controllers; Minimal APIs only when simpler)
+Language        : C# 14                   (records, pattern matching, nullable refs)
+ORM             : Entity Framework Core 10
+Database        : PostgreSQL 18
 Migrations      : EF Core Migrations
 Validation      : FluentValidation 11
 Security        : ASP.NET Core JWT Bearer
@@ -29,6 +29,12 @@ Mapping         : Mapster 7               (or AutoMapper — project standard)
 Testing         : xUnit + Moq + Testcontainers.PostgreSql
 API Docs        : Scalar / Swashbuckle    (disabled in production)
 ```
+
+### Schema ownership gate
+
+Before scaffolding, verify this baseline against official release/support pages, select the latest stable security patch in the stated supported line, and commit the resolved dependency graph. Never use preview packages or floating production image tags unless explicitly requested.
+
+Choose exactly one owner before generating code. The default for a standalone ASP.NET application is EF Core migrations. If `Database/DATABASE_STRUCTURE.md` is selected instead, remove/disable EF migrations for the owned schemas, never call `EnsureCreated`, map the existing schema explicitly, and validate compatibility at startup/CI. Never let EF Core and the reconciliation engine modify the same objects.
 
 ---
 
@@ -564,12 +570,14 @@ public class UsersController(IUserService userService) : ControllerBase
         => Ok(await userService.GetUsersAsync(page, size, ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Admin,Manager")]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<UserResponse>> GetUserById(Guid id, CancellationToken ct)
         => Ok(await userService.GetUserByIdAsync(id, ct));
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<UserResponse>> UpdateUser(
         Guid id, UpdateUserRequest request, CancellationToken ct)
@@ -585,6 +593,8 @@ public class UsersController(IUserService userService) : ControllerBase
     }
 }
 ```
+
+Expose separate `/api/v1/auth/me` read/update operations for ordinary users, deriving the subject ID from validated claims rather than a route parameter. If product requirements allow managers to access only their tenant, add a resource authorization handler and tenant-scoped repository predicate; role checks alone are not tenant isolation.
 
 ---
 
@@ -768,85 +778,11 @@ app.Run();
 
 ---
 
-## LAYER 11 — Request Signature Verification Middleware
+## LAYER 11 — Client and Service Authentication Boundary
 
-```csharp
-// Middleware/RequestSigningMiddleware.cs
-using System.Security.Cryptography;
-using System.Text;
-using YourApp.Api.DTOs.Common;
-using System.Text.Json;
+Never require a browser or mobile client to hold a shared HMAC secret. Use OpenID Connect/OAuth 2.1 Authorization Code with PKCE, or a server-managed HttpOnly session/BFF. Validate JWT issuer, audience, signature, expiry, and authorization policies.
 
-public class RequestSigningMiddleware(RequestDelegate next, IConfiguration config)
-{
-    private static readonly HashSet<string> _exempt = new() { "/api/v1/auth/login", "/api/v1/auth/register", "/health" };
-    private const int MaxAgeSeconds = 300;
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        var path = context.Request.Path.Value ?? "";
-        if (_exempt.Any(e => path.StartsWith(e))) { await next(context); return; }
-
-        var timestamp = context.Request.Headers["X-Timestamp"].FirstOrDefault();
-        var signature = context.Request.Headers["X-Signature"].FirstOrDefault();
-
-        if (string.IsNullOrEmpty(timestamp) || string.IsNullOrEmpty(signature))
-        {
-            context.Response.StatusCode  = 401;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize(
-                new ApiError(401, "Missing signature headers.", DateTime.UtcNow)));
-            return;
-        }
-
-        if (!long.TryParse(timestamp, out var ts) ||
-            Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - ts) > MaxAgeSeconds * 1000)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync(JsonSerializer.Serialize(
-                new ApiError(401, "Request expired.", DateTime.UtcNow)));
-            return;
-        }
-
-        // Read body for signing
-        context.Request.EnableBuffering();
-        var body = await new StreamReader(context.Request.Body, leaveOpen: true).ReadToEndAsync();
-        context.Request.Body.Position = 0;
-
-        var secret  = config["Security:SigningSecret"] ?? "";
-        var message = $"{timestamp}{context.Request.Method.ToUpper()}{path}{body}";
-        var expected = ComputeHmac(secret, message);
-
-        if (!CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(expected),
-                Encoding.UTF8.GetBytes(signature)))
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync(JsonSerializer.Serialize(
-                new ApiError(401, "Invalid request signature.", DateTime.UtcNow)));
-            return;
-        }
-
-        await next(context);
-    }
-
-    private static string ComputeHmac(string secret, string message)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(message))).ToLower();
-    }
-}
-```
-
-Add to `Program.cs` middleware pipeline after `RequestLoggingMiddleware`:
-```csharp
-app.UseMiddleware<RequestSigningMiddleware>();
-```
-
-Add to `appsettings.json`:
-```json
-"Security": { "SigningSecret": "REPLACE_IN_ENV" }
-```
+If a webhook or trusted service-to-service route requires HMAC, isolate it in dedicated middleware and sign `version + key-id + timestamp + nonce + method + normalized path + canonical query + SHA-256(raw body)`. Store nonces atomically in a shared TTL store, support key rotation, and never apply this scheme to general public API routes.
 
 ---
 
@@ -930,13 +866,13 @@ STEP 10  dotnet ef migrations add Add{Resource}Table
 
 ---
 
-*Stack: ASP.NET Core 9 · C# 13 · Entity Framework Core 9 · PostgreSQL · FluentValidation · Mapster · JWT Bearer*
+*Stack baseline (verified 2026-10-14): ASP.NET Core 10 LTS · C# 14 · Entity Framework Core 10 · PostgreSQL 18 · FluentValidation · Mapster · JWT Bearer*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

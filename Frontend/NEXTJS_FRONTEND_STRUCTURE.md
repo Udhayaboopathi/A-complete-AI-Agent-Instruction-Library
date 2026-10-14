@@ -7,33 +7,113 @@
 > _"Read `NEXTJS_FRONTEND_STRUCTURE.md` deeply and follow every instruction in it for all code you generate."_
 >
 > **You already have a project (any shape, any stack):**
-> _"Read `NEXTJS_FRONTEND_STRUCTURE.md` deeply, then execute the MIGRATION PROTOCOL on this repository. Reorganize the entire project into the structure defined in this file — refactor, do not just rename."_
+> _"Read `NEXTJS_FRONTEND_STRUCTURE.md` deeply, then execute the MIGRATION PROTOCOL on this repository. Convert the entire frontend to Next.js and the structure defined here. Preserve the existing UI and product identity exactly — do not redesign it."_
 >
 > This file is the single source of truth. No exceptions.
 
 ---
 
 You are a senior Next.js frontend engineer.
-This app is a dashboard that connects to a REST API backend — **FastAPI**, **ASP.NET Core**, or **Spring Boot**. You do not care which one. You only speak HTTP.
+This app connects to a REST API backend — **FastAPI**, **ASP.NET Core**, or **Spring Boot**. You do not care which one. You only speak HTTP.
 Follow every rule in this file for every file you generate.
+
+---
+
+## OPERATING MODES
+
+Choose the mode from the repository state. Do not ask the user to choose when the state makes it obvious.
+
+### MODE A — NEW NEXT.JS FRONTEND
+
+Use when no frontend exists. Build the requested product in the architecture below.
+
+### MODE B — TOTAL FRONTEND MIGRATION
+
+Use when any frontend already exists, including React, Vue, Angular, Svelte, Nuxt, Remix, Gatsby, static HTML/CSS/JavaScript, a legacy Next.js project, or another web framework.
+
+The job is a **complete implementation conversion to Next.js**, not a redesign and not a partial wrapper around the old application. Every active route, screen, component, state flow, form, API call, asset, style, and interaction must work in the target architecture before obsolete source-framework code is removed.
+
+---
+
+## MIGRATION PRIME DIRECTIVE — CHANGE THE FRAMEWORK, NOT THE PRODUCT
+
+The source frontend is the visual and behavioral specification. Unless the user explicitly asks for a design or content change, preserve all of the following:
+
+```text
+UI DESIGN       component appearance, visual hierarchy, borders, shadows, radii
+COLORS          exact color values, gradients, opacity, light/dark theme behavior
+BRANDING        logos, icons, illustrations, favicons, image crops, asset quality
+CONTENT         all visible text, labels, headings, placeholders, validation messages
+TYPOGRAPHY      font families/files, weights, sizes, line heights, letter spacing
+LAYOUT          dimensions, spacing, alignment, grids, stacking, overflow, z-index
+RESPONSIVENESS  breakpoints and behavior at mobile, tablet, desktop, wide screens
+MOTION          animations, transitions, durations, delays, easing, hover effects
+INTERACTION     click, keyboard, focus, hover, drag, scroll, modal, menu, form behavior
+THEME           theme names, tokens, persistence, system-theme behavior
+```
+
+**Do not** modernize, simplify, reword, recolor, restyle, replace assets, change fonts, remove animation, add animation, or substitute generic UI. Do not insert placeholder text, placeholder images, or a new design system. A cleaner internal implementation is welcome; a visibly different product is not.
+
+If the source contains inconsistent styling, preserve it unless the user asks to fix it. If a target-framework limitation makes exact parity impossible, stop before making a material visible change and explain the smallest necessary deviation.
+
+**Mode B precedence:** this preservation directive overrides example copy, example component appearance, default loading/empty states, styling-library preferences, and optional UI recommendations elsewhere in this file. Folder boundaries, dependency direction, type safety, and target-framework architecture remain mandatory. Translate the existing presentation into that architecture without changing what the user sees.
+
+---
+
+## TOTAL CONVERSION CONTRACT
+
+A migration is complete only when:
+
+- all active source routes have a Next.js route or an explicitly documented redirect;
+- all visible components and states are reproduced with visual parity;
+- business behavior, API contracts, authentication, permissions, validation, and error states still work;
+- local assets and font files are carried over without quality loss or silent replacement;
+- responsive and animated behavior matches the source;
+- target code follows the folder and layer rules in this file;
+- no active runtime dependency on the source framework remains;
+- old source code is removed only after parity checks pass;
+- build, typecheck, lint, and available tests pass.
+
+Structural refactoring is required. Pixel or behavioral redesign is forbidden unless explicitly requested.
+
+---
+
+## PRESERVATION-FIRST MIGRATION WORKFLOW
+
+Before editing, inventory the source read-only:
+
+1. Record the framework, routes, layouts, components, state, forms, API clients, auth flow, dependencies, tests, and build commands.
+2. Record every stylesheet, CSS variable, design token, Tailwind/custom configuration, font, icon set, image, SVG, animation, breakpoint, and theme behavior.
+3. When the app can run, capture baseline screenshots for every important route and state at representative mobile, tablet, and desktop viewports. Record interactive behavior that screenshots cannot prove.
+4. Produce a route/component migration map from each source artifact to its Next.js destination. Mark every item as `preserve`, `convert`, `replace only for framework compatibility`, or `remove because proven unused`.
+5. Build shared infrastructure first, then migrate one vertical route at a time: route shell → feature components → state/data → styles/assets → interactions → tests.
+6. After each route, compare it with the baseline. Fix parity regressions before starting unrelated cleanup.
+7. Remove the old framework, dependencies, duplicate files, and compatibility shims only after all routes pass parity and verification.
+8. Report migrated routes, preserved design assets, intentional technical changes, verification results, and any unavoidable deviations.
+
+Never infer that a file is unused from its name or location alone. Prove it through imports, routes, runtime references, build configuration, or asset usage before deleting it.
 
 ---
 
 ## TECH STACK
 
 ```
-Framework     : Next.js 15        App Router only — never Pages Router
-Language      : TypeScript 5      strict: true — always on
+Framework     : Next.js 16.4      App Router only — never Pages Router
+React         : React 19.3
+Language      : TypeScript 6      strict: true — always on
+Runtime       : Node.js 24 LTS    pin exact patch in .nvmrc / CI
 Styling       : Tailwind CSS 4    + your own ui/ primitives
 Server State  : TanStack Query v5 all API data lives here
 Client State  : Zustand 5         UI-only state (sidebar, theme, modals)
 Forms         : React Hook Form 7 + Zod resolver
-Validation    : Zod 3             all form schemas + API response shapes
+Validation    : Zod 4             all form schemas + API response shapes
 HTTP Client   : Axios 1.x         one instance, one file, interceptors only
-Auth          : next-auth v5      JWT — backend issues the token
+Auth          : Auth.js v5        encrypted HttpOnly session; backend token stays server-side
 Icons         : lucide-react
 Dates         : date-fns
 ```
+
+Before scaffolding, verify this baseline against official release/support pages (including same-day security advisories), select the latest patched mutually compatible releases, and commit the package-manager lockfile. Never use canary/RC packages or floating production images unless explicitly requested.
 
 ---
 
@@ -144,7 +224,7 @@ frontend/
 │   │   ├── client.ts                      # QueryClient singleton
 │   │   └── keys.ts                        # Query key factory
 │   ├── auth/
-│   │   ├── config.ts                      # next-auth providers + JWT callbacks
+│   │   ├── config.ts                      # Auth.js providers + JWT callbacks
 │   │   └── types.d.ts                     # Session / JWT type augmentation
 │   ├── store/
 │   │   ├── ui.store.ts                    # Sidebar open, theme
@@ -190,7 +270,7 @@ frontend/
 ├── LICENSE
 ├── README.md                              # Setup, scripts, env vars, architecture
 ├── eslint.config.mjs                      # Flat config (next/core-web-vitals)
-├── middleware.ts                          # Auth guard + security headers
+├── proxy.ts                               # Auth guard + request-time policy
 ├── next.config.ts                         # HSTS, CSP, images, redirects
 ├── next-env.d.ts                          # Generated — commit it, never edit it
 ├── package.json
@@ -223,7 +303,7 @@ These are Next.js conventions, not free-form files. They live inside `app/`, and
 | `app/sitemap.ts` | Generated `sitemap.xml` | Recommended for public pages |
 | `app/manifest.ts` | Generated web manifest (PWA) | Only if installable |
 | `app/(group)/layout.tsx` | Per-shell layout, e.g. `(dashboard)` | Per route group |
-| `app/api/auth/[...nextauth]/route.ts` | next-auth handler | Required with auth |
+| `app/api/auth/[...nextauth]/route.ts` | Auth.js handler | Required with auth |
 
 Use **either** `app/robots.ts` **or** `public/robots.txt` — never both. Same for the manifest. Generated wins when the value depends on the environment.
 
@@ -300,10 +380,10 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          NEXT_PUBLIC_API_URL:      ${{ vars.NEXT_PUBLIC_API_URL }}
+          BACKEND_API_URL:          ${{ vars.BACKEND_API_URL }}
           NEXT_PUBLIC_BACKEND_TYPE: ${{ vars.NEXT_PUBLIC_BACKEND_TYPE }}
-          NEXTAUTH_URL:             ${{ vars.NEXTAUTH_URL }}
-          NEXTAUTH_SECRET:          ${{ secrets.NEXTAUTH_SECRET }}
+          AUTH_URL:                 ${{ vars.AUTH_URL }}
+          AUTH_SECRET:              ${{ secrets.AUTH_SECRET }}
 ```
 
 **Workflow rules:**
@@ -335,7 +415,7 @@ Precedence:  .env.{mode}.local  >  .env.local  >  .env.{mode}  >  .env
 
 **Rules:**
 - Committed env files hold **non-secret defaults only** — public API base URLs, feature flags, backend type. Anything that would hurt if it appeared on GitHub belongs in `.env.local` or in the hosting platform's secret store.
-- `NEXTAUTH_SECRET`, API keys, and database URLs never live in a committed file. In production they come from the host's environment settings, not from `.env.production`.
+- `AUTH_SECRET`, `BACKEND_API_URL`, API keys, and database URLs never live in browser-exposed variables. Secrets come from the host's secret store, not from committed env files.
 - Every variable that appears in any env file must also appear in `.env.example` with an empty value.
 - `NEXT_PUBLIC_*` is compiled into the browser bundle and is readable by every visitor. Never prefix a secret with it.
 - `.gitignore` must contain `.env*.local` (and must NOT ignore `.env.example`).
@@ -382,7 +462,7 @@ yarn-error.log*
     "dev":        "next dev",
     "build":      "next build",
     "start":      "next start",
-    "lint":       "next lint",
+    "lint":       "eslint . --max-warnings=0",
     "typecheck":  "tsc --noEmit",
     "format":     "prettier --write .",
     "verify":     "npm run typecheck && npm run lint && npm run build"
@@ -534,19 +614,19 @@ NEVER add "use client" to:
 
 ## CODE BLUEPRINTS
 
-### `middleware.ts`
+### `proxy.ts`
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 const PROTECTED = ["/dashboard", "/settings"];   // add every protected prefix here
 const AUTH_ONLY = ["/login", "/register"];
 
-export async function middleware(req: NextRequest): Promise<NextResponse> {
+export async function proxy(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
 
   if (PROTECTED.some((p) => pathname.startsWith(p)) && !token) {
     const url = new URL("/login", req.url);
@@ -558,7 +638,26 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  const res = NextResponse.next();
+  const nonce = btoa(crypto.randomUUID());
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `style-src 'self' 'nonce-${nonce}'`,
+    "img-src 'self' blob: data: https:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Frame-Options",        "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy",        "strict-origin-when-cross-origin");
@@ -594,19 +693,6 @@ const nextConfig: NextConfig = {
         headers: [
           // HSTS — force HTTPS for 1 year (only works over HTTPS, safe to add always)
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
-          // Content Security Policy — tighten per project
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' blob: data: https:",
-              "font-src 'self'",
-              "connect-src 'self' https://api.yourdomain.com",
-              "frame-ancestors 'none'",
-            ].join("; "),
-          },
         ],
       },
     ];
@@ -616,7 +702,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-**NOTE:** `next.config.ts` adds HSTS and CSP. `middleware.ts` adds X-Frame-Options, X-Content-Type-Options, etc. Both are needed together — they cover different layers.
+**NOTE:** `next.config.ts` owns static HSTS. `proxy.ts` owns request-time auth routing, request IDs, and the per-response nonce CSP. Read `x-nonce` with `headers()` in the root layout and pass it to any inline framework/script/style primitive that requires a nonce. Do not weaken production CSP with `unsafe-eval` or `unsafe-inline`.
 
 ---
 
@@ -737,67 +823,20 @@ export function normalizeError(data: unknown): string {
 
 ```typescript
 // lib/api/client.ts
-import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { getSession, signOut } from "next-auth/react";
+import axios from "axios";
 import { normalizeError } from "./adapters";
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  // Same-origin BFF. Browser code never receives the backend access token.
+  baseURL: "/api/backend",
   timeout: 15_000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-apiClient.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    const session = await getSession();
-    if (session?.accessToken) config.headers.Authorization = `Bearer ${session.accessToken}`;
-
-    // Forward X-Request-ID for end-to-end tracing (set by middleware.ts)
-    // In browser, read from the last response header stored in a module-level variable
-    if (typeof window !== "undefined" && (window as { __requestId?: string }).__requestId) {
-      config.headers["X-Request-ID"] = (window as { __requestId?: string }).__requestId;
-    }
-    return config;
-  },
-  (err) => Promise.reject(err)
-);
-
-// Silent refresh queue — prevents multiple simultaneous refresh calls
-let _isRefreshing = false;
-let _queue: Array<{ resolve: () => void; reject: (e: unknown) => void }> = [];
-
 apiClient.interceptors.response.use(
   (res) => res,
-  async (err: AxiosError) => {
-    const original = err.config as typeof err.config & { _retry?: boolean };
-
-    if (err.response?.status === 401 && !original?._retry) {
-      if (_isRefreshing) {
-        return new Promise<void>((resolve, reject) => _queue.push({ resolve, reject }))
-          .then(() => apiClient(original!));
-      }
-      original!._retry = true;
-      _isRefreshing    = true;
-
-      try {
-        // next-auth automatically handles token refresh via the session
-        const session = await getSession();
-        if (session?.accessToken) {
-          _queue.forEach(({ resolve }) => resolve());
-          _queue = [];
-          return apiClient(original!);   // retry with refreshed token
-        }
-      } catch {
-        _queue.forEach(({ reject: rej }) => rej(err));
-        _queue = [];
-      } finally {
-        _isRefreshing = false;
-      }
-
-      await signOut({ callbackUrl: "/login" });
-      return Promise.reject(err);
-    }
-
+  (err) => {
     return Promise.reject(new Error(normalizeError(err.response?.data)));
   }
 );
@@ -811,9 +850,10 @@ export default apiClient;
 
 ```typescript
 // lib/api/endpoints.ts
-// ALL backend URLs live here. Add new feature endpoints here first — before any other file.
+// Canonical API paths live here. The browser prefixes them with /api/backend;
+// server-only code prefixes them with BACKEND_API_URL.
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+const BASE = "";
 
 export const ENDPOINTS = {
   auth: {
@@ -1221,7 +1261,7 @@ export const useUIStore = create<UIState>()(
 ```typescript
 // lib/store/auth.store.ts
 // Caches the logged-in user for fast UI reads (role checks, display name).
-// Source of truth is still next-auth session — this is a read cache only.
+// Source of truth is still the Auth.js session — this is a read cache only.
 // Always sync from useSession() on mount; never write passwords or tokens here.
 
 import { create } from "zustand";
@@ -1304,15 +1344,10 @@ export const authConfig: NextAuthConfig = {
         if (!parsed.success) return null;
 
         try {
-          // ── FastAPI uses form-urlencoded (username field, not email) ──
-          // const res = await fetch(ENDPOINTS.auth.login, {
-          //   method:  "POST",
-          //   headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          //   body:    new URLSearchParams({ username: parsed.data.email, password: parsed.data.password }),
-          // });
-
-          // ── ASP.NET Core and Spring Boot use JSON ─────────────────────
-          const res = await fetch(ENDPOINTS.auth.login, {
+          // Canonical contract for every backend in this library.
+          const apiBase = process.env.BACKEND_API_URL;
+          if (!apiBase) throw new Error("BACKEND_API_URL is required");
+          const res = await fetch(`${apiBase}${ENDPOINTS.auth.login}`, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ email: parsed.data.email, password: parsed.data.password }),
@@ -1332,15 +1367,19 @@ export const authConfig: NextAuthConfig = {
             tokenData.token;
 
           if (!accessToken) return null;
+          const refreshToken = tokenData.refresh_token ?? tokenData.refreshToken;
+          const expiresAt = Date.now() + Number(tokenData.expires_in ?? 900) * 1000;
 
           // Fetch the logged-in user's profile
-          const meRes = await fetch(ENDPOINTS.auth.me, {
+          const meRes = await fetch(`${apiBase}${ENDPOINTS.auth.me}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
           if (!meRes.ok) return null;
           const user = await meRes.json();
 
-          return { ...user, accessToken };
+          // These token fields enter Auth.js's encrypted HttpOnly JWT cookie.
+          // The session callback below MUST NOT expose them to browser JavaScript.
+          return { ...user, accessToken, refreshToken, expiresAt };
         } catch {
           return null;
         }
@@ -1352,6 +1391,8 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.accessToken = (user as { accessToken: string }).accessToken;
+        token.refreshToken = (user as { refreshToken?: string }).refreshToken;
+        token.expiresAt = (user as { expiresAt: number }).expiresAt;
         token.id          = user.id;
         token.role        = (user as { role?: string }).role ?? "viewer";
         token.full_name   = (user as { full_name?: string }).full_name ?? "";
@@ -1359,7 +1400,6 @@ export const authConfig: NextAuthConfig = {
       return token;
     },
     async session({ session, token }) {
-      session.accessToken  = token.accessToken as string;
       session.user.id      = token.id          as string;
       session.user.role    = token.role         as string;
       session.user.full_name = token.full_name  as string;
@@ -1382,7 +1422,7 @@ export const authConfig: NextAuthConfig = {
 
 ```typescript
 // app/api/auth/[...nextauth]/route.ts
-// This is the required catch-all route that next-auth uses internally.
+// This is the required catch-all route that Auth.js uses internally.
 // Never add logic here — all config lives in lib/auth/config.ts.
 
 import NextAuth from "next-auth";
@@ -1393,7 +1433,7 @@ const { handlers } = NextAuth(authConfig);
 export const { GET, POST } = handlers;
 ```
 
-**next-auth TypeScript extension** — add this to `lib/auth/types.d.ts` so `session.user.role` and `session.accessToken` are typed:
+**Auth.js TypeScript extension** — browser sessions contain identity/authorization metadata only. Upstream tokens remain server-only in the encrypted JWT cookie and are read only by the BFF route:
 
 ```typescript
 // lib/auth/types.d.ts
@@ -1402,7 +1442,6 @@ import "next-auth/jwt";
 
 declare module "next-auth" {
   interface Session {
-    accessToken: string;
     user: {
       id:         string;
       role:       string;
@@ -1417,11 +1456,15 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     accessToken: string;
+    refreshToken?: string;
+    expiresAt: number;
     role:        string;
     full_name:   string;
   }
 }
 ```
+
+Create `app/api/backend/[...path]/route.ts` as the only browser-to-backend gateway. It must read the encrypted Auth.js token server-side, allowlist methods and path prefixes, attach the upstream bearer token, preserve raw request bodies and query strings, apply timeouts/body limits, refresh once on expiry, and stream the sanitized response. Never accept an arbitrary upstream URL and never return access or refresh tokens to the browser.
 
 ---
 
@@ -1603,7 +1646,7 @@ export const NAV_ITEMS: NavItem[] = [
 | Query keys | `queryKeys.{feature}.{scope}(params)` | `queryKeys.users.list(p)` |
 | Endpoints | `ENDPOINTS.{feature}.{action}` | `ENDPOINTS.users.detail(id)` |
 | Folders | `lowercase` or `camelCase` | `pages/`, `shared/`, `ui/` |
-| Public env | `NEXT_PUBLIC_UPPER_SNAKE` | `NEXT_PUBLIC_API_URL` |
+| Public env | `NEXT_PUBLIC_UPPER_SNAKE` | `NEXT_PUBLIC_BACKEND_TYPE` |
 
 ---
 
@@ -1639,7 +1682,7 @@ STEP 8   components/pages/{feature}/index.ts
 STEP 9   app/(dashboard)/{feature}/page.tsx
          → metadata + import + return (≤ 8 lines)
 
-STEP 10  middleware.ts
+STEP 10  proxy.ts
          → add "/{feature}" to PROTECTED array
 
 STEP 11  lib/nav.ts
@@ -1741,8 +1784,9 @@ Change nothing in this phase. A migration planned from a partial reading of the 
      - Junk .......................... *.bak, *.old, *copy*, *.txt, commented-out blocks
 
 1.8  Assets and styles: public/, images, fonts, global CSS, CSS Modules,
-     styled-components, SCSS. Note what must become Tailwind and what is
-     genuinely global (globals.css).
+     styled-components, SCSS. Record exact values and behavior, then map how
+     each will be reproduced without visual change. Keep only genuinely global
+     rules in globals.css.
 ```
 
 **Exit condition:** you can name every route, every API endpoint, every form, and every state store in the source project without re-reading it.
@@ -1795,7 +1839,7 @@ Every source file gets exactly one destination and exactly one action. No file m
 | Menu / nav definitions, hardcoded sidebar links | `lib/nav.ts` |
 | Pure helpers: formatting, class merging | `lib/utils/` |
 | Magic strings / numbers used by one feature | `components/pages/{feature}/constants.ts` |
-| Route protection, security headers | `middleware.ts` |
+| Route protection, request-time policy | `proxy.ts` |
 | Static files served as-is | `public/` |
 | Dead, duplicated, or superseded by a blueprint | **DELETE** |
 
@@ -1823,7 +1867,7 @@ Create it at the frontend root with these ten sections:
 ```
 1.  Source assessment     stack, size, TS/JS, state libs, quality notes
 2.  Target confirmation   the TECH STACK table + any deviation you must flag
-                          (e.g. "project has no auth → next-auth omitted")
+                          (e.g. "project has no auth → Auth.js omitted")
 3.  Feature list          canonical names + the vocabulary decisions made
 4.  Route map             old route → new route (+ route group, + auth needed)
 5.  File ledger           every source file → destination + action + one-line note
@@ -1849,7 +1893,7 @@ Create the target tree from the FOLDER STRUCTURE section — real folders, not p
 ```
 3.1  tsconfig.json      exactly as specified (strict: true, "@/*": ["./*"])
 3.2  next.config.ts     from the blueprint (HSTS + CSP)
-3.3  middleware.ts      from the blueprint (PROTECTED starts empty, filled in Phase 6)
+3.3  proxy.ts           from the blueprint (PROTECTED starts empty, filled in Phase 6)
 3.4  .env.example       committed, empty values
 3.5  .env.local         real values carried over from the old env file(s)
 3.6  .gitignore         must contain .env.local, node_modules, .next
@@ -1908,7 +1952,7 @@ Nothing in `components/` can be built correctly until `lib/` is right. Build in 
 
 Migration rules for this layer:
 
-- **Tokens leave browser storage.** `localStorage.getItem("token")` and every manual `Authorization` header disappear; the next-auth session plus the request interceptor replace them. This is a mandated behavior change — record it in the report.
+- **Tokens leave browser storage.** `localStorage.getItem("token")` and every browser-managed backend `Authorization` header disappear; the Auth.js HttpOnly session plus same-origin BFF replace them. This is a mandated behavior change — record it in the report.
 - **One HTTP client.** Every `api.js`, `http.js`, `request.ts`, `useFetch`, and bare `fetch` collapses into `apiClient`.
 - **Shapes normalize at the edge.** Every list call goes through `normalizePaginated()`; components never see `totalElements` or `pageNumber`.
 - **Duplicate helpers collapse.** Three date formatters become one `formatDate` — pick the most correct implementation, not the first one you found.
@@ -1966,11 +2010,11 @@ Equally: **do not over-split.** A 30-line card used once does not need its own f
 ✓ "use client" added ONLY where the SERVER vs CLIENT rules require it
 ✓ Props typed with an explicit interface — no implicit any, no React.FC
 ✓ Every string that faces the user stays user-facing; no debug text ships
-✓ Class names via Tailwind + cn(); inline style objects are removed
+✓ Existing visual values are preserved exactly while styles move to the target styling layer
 ✓ Imports use "@/..." — every relative cross-folder path is rewritten
 ✓ Dead props, unused state, and commented-out code are removed, not carried
 ✓ Keys, ids, and list rendering fixed to use stable ids (never array index)
-✓ Loading state uses Skeleton, empty state uses EmptyState — not raw text
+✓ Existing loading, empty, error, and success states retain their source appearance and wording
 ✓ Accessibility kept or improved: labels tied to inputs, buttons are <button>
 ```
 
@@ -2013,7 +2057,7 @@ Before moving to the next feature, all of these must hold:
 
 6.4  Add error.tsx, loading.tsx, not-found.tsx from the blueprints.
 
-6.5  middleware.ts: fill PROTECTED with every authenticated route prefix,
+6.5  proxy.ts: fill PROTECTED with every authenticated route prefix,
      AUTH_ONLY with every login/register prefix.
 
 6.6  Preserve URLs. If a path must change, add a redirect in next.config.ts
@@ -2052,7 +2096,9 @@ The migration is not real until the old code is gone.
      every file marked DELETE in the ledger.
 8.2  Delete dead code: unreferenced components, unused exports, commented-out
      blocks, TODO stubs that were never implemented.
-8.3  Delete junk: *.bak, *.old, *copy*, *.txt notes, unused images and fonts.
+8.3  Delete junk: *.bak, *.old, *copy*, *.txt notes, and images/fonts proven
+     unused by source and target routes. Never delete or replace a presentation
+     asset merely because a different asset would be cleaner.
 8.4  Remove now-unused dependencies from package.json, then reinstall so the
      lockfile matches.
 8.5  Remove obsolete config: CRA/Vite configs, old ESLint/Babel configs, dead
@@ -2063,7 +2109,7 @@ The migration is not real until the old code is gone.
      left in public/.
 ```
 
-Never delete a file until its replacement compiles and its route renders. Delete in one dedicated commit — `chore: remove legacy structure` — so the diff is reviewable and revertible.
+Never delete a file until its replacement compiles, its route renders, and its visual/behavioral parity check passes. Delete in one dedicated commit — `chore: remove legacy structure` — so the diff is reviewable and revertible.
 
 **Exit condition:** `git status` shows the legacy paths deleted, the build passes, nothing references a removed module.
 
@@ -2128,6 +2174,17 @@ test -f README.md                   # rewritten, not the old one
 test -f app/favicon.ico
 test -f app/error.tsx
 test -f app/not-found.tsx
+```
+
+**Parity gates (Mode B)**
+
+```text
+[ ] Every source route is represented in the migration map
+[ ] Same-route screenshots compared at matching mobile/tablet/desktop viewports
+[ ] Colors, fonts, spacing, assets, text, themes, and motion match the source
+[ ] Hover, focus, keyboard, validation, loading, empty, error, and success states checked
+[ ] No UI difference was introduced merely to fit a blueprint example
+[ ] Every unavoidable difference is documented and approved
 ```
 
 **Manual gates**
@@ -2231,18 +2288,18 @@ Permission key      matches the feature folder exactly          PERMISSIONS.purc
 
 ```bash
 # ── Backend ──────────────────────────────────────────────────────────
-# Base URL of your REST API — no trailing slash
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+# Server-only base URL of the REST API — no trailing slash
+BACKEND_API_URL=http://localhost:8000/api/v1
 
 # Which backend is this project using?  fastapi | aspnet | springboot
 NEXT_PUBLIC_BACKEND_TYPE=fastapi
 
-# ── next-auth ─────────────────────────────────────────────────────────
-# Full URL of the Next.js app (required by next-auth)
-NEXTAUTH_URL=http://localhost:3000
+# ── Auth.js ───────────────────────────────────────────────────────────
+# Full URL of the Next.js app
+AUTH_URL=http://localhost:3000
 
 # Random secret — generate with: openssl rand -base64 32
-NEXTAUTH_SECRET=replace-this-with-a-long-random-string
+AUTH_SECRET=replace-this-with-a-long-random-string
 
 # ── Optional: OAuth providers ─────────────────────────────────────────
 # GOOGLE_CLIENT_ID=
@@ -2252,17 +2309,17 @@ NEXTAUTH_SECRET=replace-this-with-a-long-random-string
 ### `.env.example` (commit this — tells teammates what vars are needed)
 
 ```bash
-NEXT_PUBLIC_API_URL=
+BACKEND_API_URL=
 NEXT_PUBLIC_BACKEND_TYPE=fastapi
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=
+AUTH_URL=http://localhost:3000
+AUTH_SECRET=
 ```
 
 **Rules:**
 - NEVER commit `.env.local` — add it to `.gitignore`
 - ALWAYS commit `.env.example` with empty values
 - Variables exposed to the browser MUST start with `NEXT_PUBLIC_`
-- Secret keys (NEXTAUTH_SECRET, API keys) MUST NOT start with `NEXT_PUBLIC_`
+- Secret keys (`AUTH_SECRET`, upstream URLs, API keys) MUST NOT start with `NEXT_PUBLIC_`
 - NEVER hardcode any of these values in source code
 
 ---
@@ -2371,7 +2428,7 @@ import apiClient from "../../lib/api/client";
 [ ] Forms: React Hook Form + Zod zodResolver
 [ ] Toasts only in mutation onSuccess / onError
 [ ] normalizePaginated() used for all list API calls
-[ ] New protected route added to middleware.ts PROTECTED array
+[ ] New protected route added to proxy.ts PROTECTED array
 [ ] New type in lib/types/{domain}.types.ts
 [ ] New nav entry in lib/nav.ts
 [ ] TypeScript strict — no `any` without a comment
@@ -2393,6 +2450,8 @@ import apiClient from "../../lib/api/client";
 [ ] One entity = one word across folder, type, component, hook, route,
     endpoint key, query key, permission key
 [ ] Every route from the old app resolves (or has a documented redirect)
+[ ] UI design, colors, logos, text, fonts, theme, layout, and animation match source
+[ ] Responsive and interactive parity checked at representative viewports
 [ ] Every old API call reaches the same backend endpoint as before
 [ ] Every validation rule from the old code exists as a Zod rule
 [ ] Every role check from the old code exists in lib/permissions.ts
@@ -2422,7 +2481,7 @@ User submits a form
   → toast.success(...)
 
 User navigates to /{feature}
-  → middleware.ts (Edge) → checks JWT → redirect if missing
+  → proxy.ts → checks the server-managed session → redirect if missing
   → app/(dashboard)/{feature}/page.tsx → <{Feature}Page />
   → {Feature}Page mounts → use{Feature}s() fires
   → apiClient.get + normalizePaginated → PaginatedResponse<T>
@@ -2431,14 +2490,14 @@ User navigates to /{feature}
 
 ---
 
-*Next.js 15 · TypeScript 5 · TanStack Query v5 · Zustand 5 · Zod 3 · React Hook Form 7 · next-auth v5 · Tailwind CSS 4*
+*Stack baseline (verified 2026-10-14): Next.js 16.4 · React 19.3 · TypeScript 6 · TanStack Query 5 · Zustand 5 · Zod 4 · React Hook Form 7 · Auth.js 5 · Tailwind CSS 4*
 *Works with: FastAPI · ASP.NET Core · Spring Boot*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

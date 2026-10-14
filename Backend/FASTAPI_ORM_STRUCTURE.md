@@ -49,19 +49,21 @@ Models are a **read of the live schema**, not a source of schema.
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework       : FastAPI 0.115+
-Language        : Python 3.12
+Framework       : FastAPI 0.143+
+Language        : Python 3.15
 ORM             : SQLAlchemy 2.0 async (Mapped[] / mapped_column) — maps existing tables only
-Database        : PostgreSQL 16 + asyncpg  (schema owned by database/ — not this app)
+Database        : PostgreSQL 18 + asyncpg  (schema owned by database/ — not this app)
 Migrations      : NONE in this backend. Schema deploy is database/scripts/db_deploy.py
 Validation      : Pydantic v2
 Settings        : pydantic-settings
-Auth            : python-jose + passlib[bcrypt]
+Auth            : PyJWT[crypto] + pwdlib[argon2]
 Tasks           : Celery 5 + Redis
 Package manager : uv  (pyproject.toml + uv.lock)
 Testing         : pytest + pytest-asyncio + httpx
 Server          : uvicorn
 ```
+
+Before scaffolding, verify this baseline against official release/support pages, select the latest stable security patch in each compatible line, and commit `uv.lock`. Never use pre-release packages unless explicitly requested.
 
 ---
 
@@ -185,9 +187,7 @@ backend/
 │   │   ├── __init__.py                  # register_middleware(app) — only place middleware is added
 │   │   ├── request_id.py
 │   │   ├── logging.py
-│   │   ├── tenant.py
 │   │   ├── security_headers.py
-│   │   ├── rate_limit.py
 │   │   ├── body_size.py
 │   │   └── ip_blocklist.py
 │   │
@@ -391,8 +391,9 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    ALGORITHM: str = "HS256"
-    REQUEST_SIGNING_SECRET: str  # must match frontend signing secret
+    ALGORITHM: str = "HS256"  # prefer an asymmetric algorithm + KMS/JWKS across services
+    JWT_ISSUER: str
+    JWT_AUDIENCE: str
 
     # Database
     POSTGRES_SERVER: str
@@ -423,7 +424,6 @@ class Settings(BaseSettings):
     # CORS & Security Middleware
     BACKEND_CORS_ORIGINS: list[str] = []
     ALLOWED_HOSTS: list[str] = ["*"]
-    RATE_LIMIT_PER_MINUTE: int = 60
     MAX_BODY_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
     IP_BLOCKLIST: list[str] = []
 
@@ -529,20 +529,23 @@ async def init_db() -> None:
 # app/core/security.py
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import uuid
+
+import jwt
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash.recommended()
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return password_hash.verify(plain, hashed)
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
@@ -550,7 +553,15 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return jwt.encode(
-        {"sub": subject, "exp": expire, "iat": datetime.now(timezone.utc)},
+        {
+            "sub": subject,
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+            "type": "access",
+            "jti": str(uuid.uuid4()),
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+        },
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )
@@ -558,9 +569,16 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
 
 def decode_access_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
-        return {}
+        return jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+            options={"require": ["sub", "iss", "aud", "type", "jti", "exp", "iat"]},
+        )
+    except InvalidTokenError as exc:
+        raise ValueError("Invalid access token") from exc
 ```
 
 **RULES:**
@@ -1011,6 +1029,10 @@ class LoginRequest(AppBaseSchema):
 class Token(AppBaseSchema):
     access_token: str
     token_type: str = "bearer"
+    expires_in: int
+    # Return refresh_token only to trusted server/native clients. Browser SPAs
+    # receive it as a Secure HttpOnly cookie instead.
+    refresh_token: str | None = None
 
 
 class TokenPayload(AppBaseSchema):
@@ -1131,6 +1153,7 @@ async def update_user(
 # app/modules/auth/service.py
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import create_access_token, verify_password
 from app.modules.auth.exceptions import InvalidCredentials
 from app.modules.auth.repository import auth_repository
@@ -1149,7 +1172,12 @@ async def authenticate_user(db: AsyncSession, *, email: str, password: str) -> U
 
 async def login(db: AsyncSession, *, email: str, password: str) -> Token:
     user = await authenticate_user(db, email=email, password=password)
-    return Token(access_token=create_access_token(subject=str(user.id)))
+    # The production implementation also creates a hashed, rotating refresh
+    # session as required by the canonical auth contract below.
+    return Token(
+        access_token=create_access_token(subject=str(user.id)),
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 ```
 
 **RULES:**
@@ -1258,6 +1286,17 @@ router = APIRouter(prefix="/auth", tags=[AUTH_TAG])
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     return await auth_service.login(db, email=payload.email, password=payload.password)
 ```
+
+### Canonical auth contract — implement all four routes
+
+Every backend in this library must expose the same JSON contract under `/api/v1/auth`:
+
+- `POST /login` with `{ "email", "password" }` returns a short-lived access token, `expires_in`, and sets a rotating `Secure; HttpOnly; SameSite=Lax` refresh cookie for browser clients. A trusted BFF/native flow may receive a refresh token through its confidential/native channel.
+- `POST /refresh` rotates the refresh token, detects reuse against a server-side hashed session record, and returns a new short-lived access token. Do not accept a non-rotating bearer token forever.
+- `POST /logout` revokes the current refresh-token family, clears the cookie, and is idempotent.
+- `GET /me` requires the access token and returns `UserRead`. Keep `/users/me` only as a documented compatibility alias if an existing client needs it.
+
+Refresh-token records must store a hash, subject, family/session ID, expiry, revoked/replaced timestamps, and device/audit metadata. Never store raw refresh tokens. Rate-limit login and refresh. Browser cookie flows must validate CSRF and Origin on state-changing requests.
 
 **RULES:**
 
@@ -1490,13 +1529,11 @@ Request In
     ▼  ② HTTPSRedirect      → HTTP in production?         → 301
     ▼  ③ RequestID          → stamp X-Request-ID (uuid4)
     ▼  ④ RequestLogging     → log method/path/status/ms
-    ▼  ⑤ RateLimit          → > N req/min for this IP?    → 429
-    ▼  ⑥ IPBlocklist        → banned IP?                  → 403
-    ▼  ⑦ Tenant             → resolve tenant onto request.state
-    ▼  ⑧ SecurityHeaders    → inject HSTS/CSP/X-Frame headers
-    ▼  ⑨ BodySizeLimit      → body > 10MB?                → 413
-    ▼  ⑩ CORS               → cross-origin check
-    ▼  ⑪ GZip               → compress response
+    ▼  ⑤ IPBlocklist        → banned IP?                  → 403
+    ▼  ⑥ SecurityHeaders    → inject API-safe headers
+    ▼  ⑦ BodySizeLimit      → body > 10MB?                → 413
+    ▼  ⑧ CORS               → cross-origin check
+    ▼  ⑨ GZip               → compress response
     │
     ▼
 Route Handler
@@ -1516,28 +1553,24 @@ from app.core.config import settings
 from app.middleware.body_size import RequestSizeLimitMiddleware
 from app.middleware.ip_blocklist import IPBlocklistMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
-from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.middleware.tenant import TenantMiddleware
 
 
 def register_middleware(app: FastAPI) -> None:
     # Registered in reverse: last added = outermost = first executed
-    app.add_middleware(GZipMiddleware, minimum_size=1000)  # ⑪
+    app.add_middleware(GZipMiddleware, minimum_size=1000)  # ⑨
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Tenant-ID"],
-        expose_headers=["X-Request-ID", "X-RateLimit-Remaining"],
-    )  # ⑩
-    app.add_middleware(RequestSizeLimitMiddleware, max_body_size=settings.MAX_BODY_SIZE_BYTES)  # ⑨
-    app.add_middleware(SecurityHeadersMiddleware)  # ⑧
-    app.add_middleware(TenantMiddleware)  # ⑦
-    app.add_middleware(IPBlocklistMiddleware, blocklist=settings.IP_BLOCKLIST)  # ⑥
-    app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.RATE_LIMIT_PER_MINUTE)  # ⑤
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+        expose_headers=["X-Request-ID"],
+    )  # ⑧
+    app.add_middleware(RequestSizeLimitMiddleware, max_body_size=settings.MAX_BODY_SIZE_BYTES)  # ⑦
+    app.add_middleware(SecurityHeadersMiddleware)  # ⑥
+    app.add_middleware(IPBlocklistMiddleware, blocklist=settings.IP_BLOCKLIST)  # ⑤
     app.add_middleware(RequestLoggingMiddleware)  # ④
     app.add_middleware(RequestIDMiddleware)  # ③
     if settings.PRODUCTION:
@@ -1615,78 +1648,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
 ```
 
-#### `app/middleware/tenant.py`
+#### Tenant isolation — authenticated claims, never request headers
 
-```python
-# app/middleware/tenant.py
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+Never trust `X-Tenant-ID` or any client-selected tenant identifier. Derive the active tenant from validated authentication claims and verified membership. A tenant-aware dependency must set `SET LOCAL app.tenant_id = :tenant_id` on the same `AsyncSession` transaction before tenant queries run. Every tenant-owned repository method must also include an explicit `tenant_id` predicate. PostgreSQL RLS is the final defense, not the only defense.
 
-from app.core.constants import HEALTH_PATHS
+For users with access to multiple tenants, accept a tenant selection only as an opaque membership ID, verify it belongs to the current subject, then derive the tenant ID server-side. Clear transaction-local context automatically by ending the transaction; never use session-level `SET` with pooled connections.
 
+#### Rate-limit policy
 
-class TenantMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in HEALTH_PATHS:
-            request.state.tenant_id = None
-            return await call_next(request)
-
-        request.state.tenant_id = request.headers.get("X-Tenant-ID")
-        return await call_next(request)
-```
-
-#### `app/middleware/rate_limit.py`
-
-```python
-# app/middleware/rate_limit.py
-import time
-from collections import defaultdict, deque
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-
-from app.core.constants import HEALTH_PATHS
-
-
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, requests_per_minute: int = 60) -> None:
-        super().__init__(app)
-        self.rpm = requests_per_minute
-        self._store: dict[str, deque] = defaultdict(deque)
-
-    def _ip(self, request: Request) -> str:
-        fwd = request.headers.get("X-Forwarded-For")
-        return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in HEALTH_PATHS:
-            return await call_next(request)
-
-        ip, now = self._ip(request), time.time()
-        bucket = self._store[ip]
-        while bucket and bucket[0] < now - 60:
-            bucket.popleft()
-
-        if len(bucket) >= self.rpm:
-            retry = int(60 - (now - bucket[0])) + 1
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests.", "retry_after_seconds": retry},
-                headers={
-                    "Retry-After": str(retry),
-                    "X-RateLimit-Limit": str(self.rpm),
-                    "X-RateLimit-Remaining": "0",
-                },
-            )
-
-        bucket.append(now)
-        response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self.rpm)
-        response.headers["X-RateLimit-Remaining"] = str(self.rpm - len(bucket))
-        return response
-```
+Use the reverse proxy/API gateway for coarse IP limits and Redis (atomic script/token bucket) for application/account limits. Never use an in-process dictionary/deque in production: it is bypassed across workers, loses state on restart, and can grow without bound. Trust `Forwarded`/`X-Forwarded-For` only from configured proxy IPs; otherwise use the direct peer address. Authentication, password reset, and expensive endpoints need distinct policies.
 
 #### `app/middleware/security_headers.py`
 
@@ -1699,18 +1669,10 @@ from starlette.responses import Response
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     _HEADERS = {
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
-        "X-XSS-Protection": "1; mode=block",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "geolocation=(), microphone=(), camera=(), payment=()",
-        "Content-Security-Policy": (
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
-        ),
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
     }
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -1721,6 +1683,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.pop("X-Powered-By", None)
         return response
 ```
+
+Set HSTS at the TLS-terminating proxy, not on an internal HTTP hop. Generate CSP in the HTML frontend with nonces/hashes. Apply `Cache-Control: no-store` only to sensitive/authenticated responses; do not disable caching globally for public immutable resources.
 
 #### `app/middleware/body_size.py`
 
@@ -1962,7 +1926,7 @@ Before you say you are done with any task, verify every item:
 
 ```
 POST /api/v1/users/
-  → middleware (RequestID → Log → RateLimit → Tenant → Security → ...)
+  → edge/gateway limits → middleware (RequestID → Log → IP policy → Security → ...)
   → app/api/router.py              /api/v1 mount
   → app/api/v1/router.py           users router
   → modules/users/router.py        create_user()
@@ -1974,13 +1938,13 @@ POST /api/v1/users/
 
 ---
 
-_Stack: Python 3.12 · FastAPI 0.115+ · SQLAlchemy 2.0 · Pydantic v2 · Celery 5 · uv | v3.0_
+_Stack baseline (verified 2026-10-14): Python 3.15 · FastAPI 0.143+ · SQLAlchemy 2.0 · Pydantic v2 · PostgreSQL 18 · Celery 5 · uv | v3.1_
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author: Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

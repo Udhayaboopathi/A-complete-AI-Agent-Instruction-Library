@@ -18,18 +18,24 @@ You have creative freedom only over business logic inside the defined boundaries
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework       : Spring Boot 3.x          (Jakarta EE, not javax)
-Language        : Java 21                  (records, sealed classes, text blocks)
-ORM             : Spring Data JPA          + Hibernate 6
-Database        : PostgreSQL 16
+Framework       : Spring Boot 4.1          (Jakarta EE, not javax)
+Language        : Java 25 LTS              (records, sealed classes, text blocks)
+ORM             : Spring Data JPA          + current managed Hibernate
+Database        : PostgreSQL 18
 Migrations      : Flyway
 Validation      : Jakarta Bean Validation  (Hibernate Validator)
-Security        : Spring Security 6        + JWT (jjwt 0.12.x)
+Security        : Spring Security 7        + JWT (managed/current compatible release)
 Mapping         : MapStruct 1.6
 Testing         : JUnit 5 + Mockito + Testcontainers
 Build           : Maven (pom.xml)
-Docs            : SpringDoc OpenAPI 2.x    (disabled in production)
+Docs            : latest SpringDoc release compatible with Spring Boot 4 (disabled in production)
 ```
+
+### Schema ownership gate
+
+Before scaffolding, verify this baseline against official release/support pages, select the latest stable security patch in the stated supported line, and commit the Maven dependency resolution. Never use milestone, RC, snapshot, or floating production image tags unless explicitly requested.
+
+Choose exactly one owner before generating code. The default for a standalone Spring application is Flyway with Hibernate `ddl-auto: validate`. If `Database/DATABASE_STRUCTURE.md` is selected instead, disable Flyway for the owned schemas and keep Hibernate in validation-only mode. Never let Flyway, Hibernate DDL, and the reconciliation engine modify the same objects.
 
 ---
 
@@ -805,7 +811,7 @@ CREATE INDEX idx_items_owner_id ON items(owner_id);
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.0</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -815,7 +821,7 @@ CREATE INDEX idx_items_owner_id ON items(owner_id);
     <name>app-name</name>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>25</java.version>
         <mapstruct.version>1.6.0</mapstruct.version>
         <jjwt.version>0.12.5</jjwt.version>
     </properties>
@@ -1070,85 +1076,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
 ---
 
-## LAYER 13 — Request Signature Verification Filter
+## LAYER 13 — Client and Service Authentication Boundary
 
-```java
-// security/RequestSigningFilter.java
-package com.company.appname.security;
+Never require a browser or mobile client to hold a shared HMAC secret. Use OpenID Connect/OAuth 2.1 Authorization Code with PKCE, or a server-managed HttpOnly session/BFF. Validate JWT issuer, audience, signature, expiry, and method-level authorization.
 
-import jakarta.servlet.*;
-import jakarta.servlet.http.*;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.HexFormat;
-import java.util.Set;
-
-@Component
-public class RequestSigningFilter extends OncePerRequestFilter {
-
-    @Value("${app.security.signing-secret}")
-    private String signingSecret;
-
-    private static final Set<String> EXEMPT = Set.of(
-        "/api/v1/auth/login", "/api/v1/auth/register", "/health"
-    );
-    private static final long MAX_AGE_MS = 300_000L; // 5 minutes
-
-    @Override
-    protected void doFilterInternal(
-        HttpServletRequest request, HttpServletResponse response, FilterChain chain
-    ) throws ServletException, IOException {
-
-        String path = request.getRequestURI();
-        if (EXEMPT.stream().anyMatch(path::startsWith)) { chain.doFilter(request, response); return; }
-
-        String timestamp = request.getHeader("X-Timestamp");
-        String signature = request.getHeader("X-Signature");
-
-        if (timestamp == null || signature == null) {
-            response.sendError(401, "Missing signature headers."); return;
-        }
-        long ts = Long.parseLong(timestamp);
-        if (Math.abs(System.currentTimeMillis() - ts) > MAX_AGE_MS) {
-            response.sendError(401, "Request expired."); return;
-        }
-
-        // Cache body for re-reading
-        CachedBodyHttpServletRequest cached = new CachedBodyHttpServletRequest(request);
-        String body    = new String(cached.getBody(), StandardCharsets.UTF_8);
-        String message = timestamp + request.getMethod().toUpperCase() + path + body;
-        String expected = hmacSHA256(signingSecret, message);
-
-        if (!MessageDigest.isEqual(expected.getBytes(), signature.getBytes())) {
-            response.sendError(401, "Invalid request signature."); return;
-        }
-        chain.doFilter(cached, response);
-    }
-
-    private String hmacSHA256(String secret, String message) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        return HexFormat.of().formatHex(mac.doFinal(message.getBytes(StandardCharsets.UTF_8)));
-    }
-}
-```
-
-Add to `application.yml`:
-```yaml
-app:
-  security:
-    signing-secret: ${APP_SIGNING_SECRET}
-```
-
-Register filter in `SecurityConfig.java` — add before JWT filter:
-```java
-.addFilterBefore(requestSigningFilter, JwtAuthFilter.class)
-```
+If a webhook or trusted service-to-service route requires HMAC, isolate it in a dedicated filter and sign `version + key-id + timestamp + nonce + method + normalized path + canonical query + SHA-256(raw body)`. Store nonces atomically in a shared TTL store, support key rotation, and never apply this scheme to general public API routes.
 
 ---
 
@@ -1233,13 +1165,13 @@ STEP 8   exception/GlobalExceptionHandler.java → add any new exception types i
 
 ---
 
-*Stack: Spring Boot 3.x · Java 21 · Spring Data JPA · PostgreSQL · Flyway · MapStruct · Spring Security 6 · JWT*
+*Stack baseline (verified 2026-10-14): Spring Boot 4.1 · Java 25 LTS · Spring Data JPA · PostgreSQL 18 · Flyway · MapStruct · Spring Security 7 · JWT*
 
 ---
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)

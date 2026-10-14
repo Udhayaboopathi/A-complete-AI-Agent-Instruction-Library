@@ -3,6 +3,9 @@
 > **HOW TO USE THIS FILE**
 > Drop this file into your project root. When starting a new chat, say:
 > _"Read `FLUTTER_STRUCTURE.md` deeply and follow every instruction in it for all code you generate."_
+>
+> **To migrate an existing frontend of any kind:**
+> _"Read `FLUTTER_STRUCTURE.md` deeply. Convert the complete existing frontend to Flutter using its migration contract. Preserve the existing UI and product identity exactly — do not redesign it."_
 > This file is the single source of truth. No exceptions.
 
 ---
@@ -16,15 +19,77 @@ Every file you generate MUST follow the exact structure, patterns, and rules in 
 
 ---
 
+## OPERATING MODES
+
+### MODE A — NEW FLUTTER FRONTEND
+
+Use when no frontend exists. Build the requested product in the architecture below.
+
+### MODE B — TOTAL FRONTEND MIGRATION
+
+Use when a frontend already exists in React Native, native Android/iOS, another cross-platform toolkit, a web framework, or static HTML/CSS/JavaScript and the user wants it implemented in Flutter.
+
+Convert the complete active frontend to Flutter. Do not embed the old application in a WebView, leave active legacy screens, or stop after reproducing only the main pages.
+
+---
+
+## MIGRATION PRIME DIRECTIVE — CHANGE THE FRAMEWORK, NOT THE PRODUCT
+
+The source frontend is the visual and behavioral specification. Unless the user explicitly requests a design or content change, preserve exactly:
+
+```text
+UI DESIGN       appearance, hierarchy, borders, shadows, radii
+COLORS          exact values, gradients, opacity, light/dark behavior
+BRANDING        logos, icons, illustrations, splash assets, image crops and quality
+CONTENT         text, labels, headings, placeholders, messages
+TYPOGRAPHY      font files/families, weights, sizes, line height, letter spacing
+LAYOUT          dimensions, spacing, alignment, grids, scrolling, overlays, stacking
+RESPONSIVENESS  mobile/tablet/desktop/web breakpoints and adaptive behavior
+MOTION          animations, transitions, durations, delays, easing, gestures
+INTERACTION     touch, mouse, keyboard, focus, hover, drag, scroll, form behavior
+THEME           theme tokens, names, persistence, system-theme behavior
+```
+
+Do not modernize, simplify, reword, recolor, restyle, replace assets, change fonts, or add/remove animation without explicit permission. Do not introduce placeholder content or substitute generic Material/Cupertino styling for a custom source design. Internal widget composition may change; visible product identity may not.
+
+For a web-to-Flutter conversion, reproduce CSS behavior deliberately with Flutter layout, painting, typography, and animation primitives. Do not use a WebView as the migration strategy. If a platform limitation makes exact parity impossible, stop before a material visible change and explain the smallest necessary deviation.
+
+**Mode B precedence:** this preservation directive overrides example copy, example widget appearance, default loading/empty states, Material/Cupertino defaults, and optional UI recommendations elsewhere in this file. Folder boundaries, dependency direction, type safety, and Flutter architecture remain mandatory. Translate the existing presentation into that architecture without changing what the user sees.
+
+---
+
+## TOTAL CONVERSION CONTRACT
+
+A migration is complete only when every active screen, route, component, state, form, API call, permission, asset, style, responsive rule, gesture, and animation has been converted and verified on the requested target platforms. The result must use the structure in this file, pass analyze/build/tests, and have no active dependency on the source UI framework.
+
+Remove old code only after parity passes. Never treat “the Flutter app launches” as proof that the migration is complete.
+
+---
+
+## PRESERVATION-FIRST MIGRATION WORKFLOW
+
+1. Inventory the source read-only: screens/routes, layouts, components, state, forms, APIs, auth, native integrations, dependencies, tests, build, styles, assets, fonts, themes, breakpoints, gestures, and animations.
+2. When runnable, capture baseline screenshots for important screens and states on representative device sizes; record gestures and non-visual interactions separately.
+3. Create a source-to-target screen, component, and asset map. Classify every artifact as `preserve`, `convert`, `platform-compatibility replacement`, or `proven unused`.
+4. Establish Flutter routing, providers, API/auth infrastructure, themes, fonts, and assets before feature conversion.
+5. Migrate one complete screen flow at a time, including exact visuals, states, interactions, navigation, data flow, and tests.
+6. Compare each migrated flow against the baseline on every requested platform before unrelated cleanup.
+7. After all parity checks pass, remove the source framework, obsolete dependencies, duplicate artifacts, and temporary shims.
+8. Report what was migrated, what was preserved, platform-specific adaptations, verification results, and any approved deviations.
+
+Never delete a file because its name looks old. Prove it is unused through imports, routes, runtime references, build configuration, or asset usage.
+
+---
+
 ## TECH STACK — USE EXACTLY THESE
 
 ```
-Framework      : Flutter 3.x           (stable channel)
-Language       : Dart 3.x              (records, pattern matching, null safety)
-State          : Riverpod 2.x          + riverpod_generator (code gen)
-Navigation     : GoRouter 14.x         (web-compatible, deep links, auth guards)
+Framework      : Flutter 3.47          (stable channel; latest stable patch)
+Language       : Dart version bundled with Flutter 3.47
+State          : Riverpod 3.x          + riverpod_generator (code gen)
+Navigation     : GoRouter 18.x         (web-compatible, deep links, auth guards)
 HTTP Client    : Dio 5.x               (interceptors — same pattern as Axios)
-Models         : Freezed 2.x           + json_serializable (immutable, copyWith, toJson)
+Models         : Freezed 4.x           + json_serializable (immutable, copyWith, toJson)
 Secure Storage : flutter_secure_storage (tokens — NOT SharedPreferences)
 Preferences    : shared_preferences    (non-sensitive UI prefs only)
 Forms          : reactive_forms        (FormGroup, FormControl + validators)
@@ -33,6 +98,8 @@ Icons          : lucide_flutter        (consistent with web frontends)
 Dates          : intl                  (DateFormat, NumberFormat)
 Environment    : flutter_dotenv        (.env file support)
 ```
+
+Before scaffolding, verify the current stable Flutter channel and package compatibility, then commit `pubspec.lock` for applications. Never use beta/main channels or floating dependency constraints unless explicitly requested.
 
 ---
 
@@ -215,9 +282,6 @@ abstract class AppEnv {
   static String get backendType =>
       dotenv.env['BACKEND_TYPE'] ?? 'fastapi';
 
-  static String get signingSecret =>
-      dotenv.env['REQUEST_SIGNING_SECRET'] ?? '';
-
   static bool get isProduction =>
       dotenv.env['ENVIRONMENT'] == 'production';
 }
@@ -227,13 +291,11 @@ abstract class AppEnv {
 # .env  (never commit)
 API_URL=https://api.yourdomain.com/api/v1
 BACKEND_TYPE=fastapi
-REQUEST_SIGNING_SECRET=same-as-backend-signing-secret
 ENVIRONMENT=production
 
 # .env.example  (commit this)
 API_URL=
 BACKEND_TYPE=fastapi
-REQUEST_SIGNING_SECRET=
 ENVIRONMENT=development
 ```
 
@@ -271,8 +333,6 @@ Run `dart run build_runner build` after adding this file to generate `core_provi
 
 ```dart
 // lib/core/api/api_client.dart
-import 'dart:convert';                            // utf8.encode
-import 'package:crypto/crypto.dart';              // Hmac, sha256
 import 'package:dio/dio.dart';
 import '../auth/token_storage.dart';
 import '../env/app_env.dart';
@@ -294,7 +354,6 @@ Dio createApiClient() {
 
   dio.interceptors.addAll([
     _AuthInterceptor(),
-    _SigningInterceptor(),
     _ErrorInterceptor(),
     if (!AppEnv.isProduction) LogInterceptor(responseBody: true),
   ]);
@@ -323,33 +382,6 @@ class _AuthInterceptor extends Interceptor {
       // Navigate to login — handled via GoRouter redirect
     }
     handler.next(err);
-  }
-}
-
-// ── Request Signing Interceptor (HMAC-SHA256) ─────────────────────────────────
-class _SigningInterceptor extends Interceptor {
-  @override
-  Future<void> onRequest(
-    RequestOptions options,
-    RequestInterceptorHandler handler,
-  ) async {
-    final secret = AppEnv.signingSecret;
-    if (secret.isEmpty) { handler.next(options); return; }
-
-    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-    final method    = options.method.toUpperCase();
-    final path      = Uri.parse(options.path).path;
-    final body      = options.data != null ? options.data.toString() : '';
-    final message   = '$timestamp$method$path$body';
-
-    // HMAC-SHA256 using Dart crypto package
-    final hmac = Hmac(sha256, utf8.encode(secret));
-    final sig  = hmac.convert(utf8.encode(message)).toString();
-
-    options.headers['X-Timestamp'] = timestamp;
-    options.headers['X-Signature'] = sig;
-
-    handler.next(options);
   }
 }
 
@@ -1072,51 +1104,50 @@ description: Enterprise Flutter app
 publish_to: none
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
-  flutter: ">=3.16.0"
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.47.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
   # State management
-  flutter_riverpod:        ^2.5.0
-  riverpod_annotation:     ^2.3.0
+  flutter_riverpod:        ^3.4.3
+  riverpod_annotation:     ^3.0.3
 
   # Navigation
-  go_router:               ^14.0.0
+  go_router:               ^18.0.2
 
   # HTTP
-  dio:                     ^5.4.0
-  crypto:                  ^3.0.0     # HMAC-SHA256 signing
+  dio:                     ^5.9.0
 
   # Models
-  freezed_annotation:      ^2.4.0
+  freezed_annotation:      ^4.0.2
   json_annotation:         ^4.9.0
 
   # Secure storage
-  flutter_secure_storage:  ^9.0.0
+  flutter_secure_storage:  ^11.2.0
 
   # Preferences (non-sensitive only)
-  shared_preferences:      ^2.2.0
+  shared_preferences:      ^2.5.0
 
   # Forms
-  reactive_forms:          ^17.0.0
+  reactive_forms:          ^18.0.0
 
   # Environment
-  flutter_dotenv:          ^5.1.0
+  flutter_dotenv:          ^6.0.0
 
   # Utilities
-  intl:                    ^0.19.0    # DateFormat, NumberFormat
+  intl:                    ^0.20.0    # DateFormat, NumberFormat
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  riverpod_generator:      ^2.4.0    # @riverpod code gen
-  build_runner:            ^2.4.0
-  freezed:                 ^2.5.0    # @freezed code gen
-  json_serializable:       ^6.7.0    # fromJson/toJson code gen
-  flutter_lints:           ^4.0.0
+  riverpod_generator:      ^3.0.3    # @riverpod code gen
+  build_runner:            ^2.10.0
+  freezed:                 ^4.0.2    # @freezed code gen
+  json_serializable:       ^6.11.0   # fromJson/toJson code gen
+  flutter_lints:           ^6.0.0
 ```
 
 ---
@@ -1243,6 +1274,19 @@ dart run build_runner watch --delete-conflicting-outputs
 [ ] Screen imports no other feature's files
 ```
 
+### MODE B MIGRATION EXIT CRITERIA
+
+```text
+[ ] Every source screen, route, state, gesture, interaction, and API call is converted
+[ ] UI design, colors, logos, text, fonts, theme, layout, and animation match source
+[ ] Adaptive parity checked on every requested platform and representative device size
+[ ] Loading, empty, error, success, hover, focus, keyboard, and validation states checked
+[ ] Assets were preserved; anything removed was proven unused
+[ ] No WebView shortcut or active source-framework screen/dependency remains
+[ ] flutter analyze, builds, available tests, and visual parity checks pass
+[ ] Every unavoidable platform difference is documented and approved
+```
+
 ---
 
 ## DATA FLOW
@@ -1253,9 +1297,9 @@ User taps "Create User"
   → UserCreateScreen submits form
   → ref.read(createUserNotifierProvider.notifier).create(data)
   → CreateUserNotifier calls usersRepository.createUser(data)
-  → Dio sends POST with auth token + HMAC signature
+  → Dio sends POST over TLS with the short-lived access token
   → _AuthInterceptor injects Authorization header
-  → _SigningInterceptor injects X-Timestamp + X-Signature
+  → native OAuth uses Authorization Code + PKCE; tokens stay in platform secure storage
   → backend responds → _ErrorInterceptor normalizes on failure
   → notifier sets state = AsyncValue.data(newUser)
   → ref.invalidate(usersListProvider) → list re-fetches
@@ -1272,7 +1316,7 @@ User opens /users screen
 
 ---
 
-*Flutter 3.x · Dart 3.x · Riverpod 2.x · GoRouter 14.x · Dio 5.x · Freezed 2.x*
+*Stack baseline (verified 2026-10-14): Flutter 3.47 stable · bundled Dart SDK · latest mutually compatible Riverpod, GoRouter, Dio, and Freezed releases*
 *Targets: iOS · Android · Windows · macOS · Linux · Web*
 *Works with: FastAPI · ASP.NET Core · Spring Boot*
 
@@ -1280,7 +1324,7 @@ User opens /users screen
 
 ## Copyright
 
-© 2026 **Udhayaboopathi V**. All rights reserved.
+© 2026 **Udhayaboopathi V**. Released under the repository's MIT License.
 
 - Author:  Udhayaboopathi V
 - Website: [udhayaboopathi.tech](https://udhayaboopathi.tech)
